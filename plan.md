@@ -3,7 +3,7 @@
 - Pytorch : Boshuai, Hongyuan
 - Triton (Triton Low-Level Extensions?) : Hanyu
 - Tilelang (?) : Sifan
-- ThunderKitten (?) : Muchen
+- ThunderKitten (?) : Muchan
 
 to look at:
 - JAX (XLA?)

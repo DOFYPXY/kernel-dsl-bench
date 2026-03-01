@@ -2,7 +2,7 @@
 
 Comparing GPU kernel implementations across PyTorch, Triton, and JAX.
 
-**Kernels:** FMA (Fused Multiply-Add), MatMul (Matrix Multiplication)
+**Kernels:** FMA (Fused Multiply-Add), MatMul (Matrix Multiplication), RMSNorm (Root Mean Square Normalization)
 
 **DSLs:** PyTorch, Triton, JAX
 
@@ -17,6 +17,11 @@ Directory: `fma/`
 `C = A @ B` - General matrix multiplication
 
 Directory: `matmul/`
+
+### 3. Root Mean Square Normalization (RMSNorm)
+`y = x / sqrt(mean(x^2) + eps)` - Normalization operation
+
+Directory: `rmsnorm/`
 
 ## Setup
 
@@ -41,6 +46,10 @@ python run.py fma --impl triton --n 100000000 --dtype fp32
 # MatMul benchmarks
 python run.py matmul --impl torch
 python run.py matmul --impl triton --m 2048 --n 2048 --k 2048
+
+# RMSNorm benchmarks
+python run.py rmsnorm --impl torch
+python run.py rmsnorm --impl triton
 ```
 
 ### From Kernel Directory
@@ -48,21 +57,23 @@ python run.py matmul --impl triton --m 2048 --n 2048 --k 2048
 #### FMA Benchmark
 ```bash
 cd fma
-python benchmark.py --impl torch     # PyTorch
-python benchmark.py --impl triton    # Triton
-python benchmark.py --impl jax       # JAX
+python benchmark.py --impl torch/triton/jax
 
-# Custom: python benchmark.py --impl triton --n 100000000 --dtype fp32
+# Custom: python benchmark.py --impl triton --n 100000000
 ```
 
 #### MatMul Benchmark
 ```bash
 cd matmul
-python benchmark.py --impl torch     # PyTorch
-python benchmark.py --impl triton    # Triton
-python benchmark.py --impl jax       # JAX
+python benchmark.py --impl torch/triton/jax
 
 # Custom: python benchmark.py --impl triton --m 2048 --n 2048 --k 2048
+```
+
+#### RMSNorm Benchmark
+```bash
+cd rmsnorm
+python benchmark.py --impl torch/triton
 ```
 
 ## Project Structure
@@ -75,10 +86,14 @@ kernel-dsl/
 │   ├── fma_triton.py
 │   ├── fma_jax.py
 │   └── benchmark.py
-└── matmul/                # MatMul kernel implementations
-    ├── matmul_torch.py
-    ├── matmul_triton.py
-    ├── matmul_jax.py
+├── matmul/                # MatMul kernel implementations
+│   ├── matmul_torch.py
+│   ├── matmul_triton.py
+│   ├── matmul_jax.py
+│   └── benchmark.py
+└── rmsnorm/               # RMSNorm kernel implementations
+    ├── rmsnorm_torch.py
+    ├── rmsnorm_triton.py
     └── benchmark.py
 ```
 

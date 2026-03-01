@@ -18,19 +18,21 @@ def main():
         print("Kernels:")
         print("  fma     - Fused Multiply-Add")
         print("  matmul  - Matrix Multiplication")
+        print("  rmsnorm  - Root Mean Square Normalization")
         print("")
         print("Examples:")
         print("  python run.py fma --impl torch")
         print("  python run.py matmul --impl triton --m 2048 --n 2048 --k 2048")
+        print("  python run.py rmsnorm --impl triton --batch 4096 --hidden 1024")
         sys.exit(1)
     
     kernel = sys.argv[1]
     args = sys.argv[2:]
     
     # Validate kernel name
-    if kernel not in ["fma", "matmul"]:
+    if kernel not in ["fma", "matmul", "rmsnorm"]:
         print(f"Error: Unknown kernel '{kernel}'")
-        print("Valid kernels: fma, matmul")
+        print("Valid kernels: fma, matmul, rmsnorm")
         sys.exit(1)
     
     # Get root directory

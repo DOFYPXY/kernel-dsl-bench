@@ -19,6 +19,7 @@ sys.path.insert(0, '..')
 from common import print_gpu_info, benchmark, verify_correctness, get_dtype, add_common_args
 from rmsnorm_torch import torch_rmsnorm
 from rmsnorm_triton import triton_rmsnorm
+from rmsnorm_tk import tk_rmsnorm
 
 
 def main():
@@ -73,6 +74,8 @@ def main():
         fn = torch_rmsnorm
     elif args.impl == "triton":
         fn = triton_rmsnorm
+    elif args.impl == "tk":
+        fn = tk_rmsnorm
     else:
         print("JAX not implemented for RMSNorm", file=sys.stderr)
         sys.exit(1)
@@ -92,13 +95,17 @@ def main():
     print(f"  Stddev: {stddev_ms:.4f} ms")
 
     # Verify correctness
-    if args.impl == "triton":
+    if args.impl in ["triton", "tk"]:
         print()
         print("Verifying correctness...")
         torch_result = torch_rmsnorm(x, weight)
-        triton_result = triton_rmsnorm(x, weight)
 
-        is_correct, max_abs_diff = verify_correctness(triton_result, torch_result)
+        if args.impl == "triton":
+            impl_result = triton_rmsnorm(x, weight)
+        else:  # tk
+            impl_result = tk_rmsnorm(x, weight)
+
+        is_correct, max_abs_diff = verify_correctness(impl_result, torch_result)
 
         print(f"  Max absolute difference: {max_abs_diff:.2e}")
         print(f"  Correct: {'✓' if is_correct else '✗'}")

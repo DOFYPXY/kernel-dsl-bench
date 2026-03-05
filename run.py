@@ -19,6 +19,7 @@ def main():
         print("  fma     - Fused Multiply-Add")
         print("  matmul  - Matrix Multiplication")
         print("  rmsnorm  - Root Mean Square Normalization")
+        print("  conv2d   - 2D Convolution")
         print("")
         print("Examples:")
         print("  python run.py fma --impl torch")
@@ -30,9 +31,9 @@ def main():
     args = sys.argv[2:]
     
     # Validate kernel name
-    if kernel not in ["fma", "matmul", "rmsnorm"]:
+    if kernel not in ["fma", "matmul", "rmsnorm", "conv2d"]:
         print(f"Error: Unknown kernel '{kernel}'")
-        print("Valid kernels: fma, matmul, rmsnorm")
+        print("Valid kernels: fma, matmul, rmsnorm, conv2d")
         sys.exit(1)
     
     # Get root directory

@@ -40,40 +40,22 @@ pip install -e ".[jax]"       # Add JAX support
 ### From Root Directory (Recommended)
 ```bash
 # FMA benchmarks
-python run.py fma --impl torch
-python run.py fma --impl triton --n 100000000 --dtype fp32
+python run.py fma --impl torch/triton/jax --n 100000000
 
 # MatMul benchmarks
-python run.py matmul --impl torch
-python run.py matmul --impl triton --m 2048 --n 2048 --k 2048
+python run.py matmul --impl torch/triton/jax --m 2048 --n 2048 --k 2048
 
 # RMSNorm benchmarks
-python run.py rmsnorm --impl torch
-python run.py rmsnorm --impl triton
+python run.py rmsnorm --impl torch/triton/jax --batch 4096 --hidden 1024
 ```
 
 ### From Kernel Directory
 
-#### FMA Benchmark
 ```bash
 cd fma
 python benchmark.py --impl torch/triton/jax
 
 # Custom: python benchmark.py --impl triton --n 100000000
-```
-
-#### MatMul Benchmark
-```bash
-cd matmul
-python benchmark.py --impl torch/triton/jax
-
-# Custom: python benchmark.py --impl triton --m 2048 --n 2048 --k 2048
-```
-
-#### RMSNorm Benchmark
-```bash
-cd rmsnorm
-python benchmark.py --impl torch/triton
 ```
 
 ## Project Structure

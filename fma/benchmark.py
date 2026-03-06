@@ -22,6 +22,15 @@ from fma_torch import torch_fma
 from fma_triton import triton_fma
 from fma_jax import jax_fma
 
+# Try to import tilelang, but don't fail if it's not available
+try:
+    from fma_tilelang import tilelang_fma
+    TILELANG_AVAILABLE = True
+except (ImportError, AttributeError) as e:
+    TILELANG_AVAILABLE = False
+    tilelang_fma = None
+    print(f"Warning: Tilelang not available ({type(e).__name__}: {e})", file=sys.stderr)
+
 
 def main():
     parser = argparse.ArgumentParser(
@@ -70,6 +79,12 @@ def main():
         fn = torch_fma
     elif args.impl == "triton":
         fn = triton_fma
+    elif args.impl == "tilelang":
+        if not TILELANG_AVAILABLE:
+            print("Error: Tilelang is not available. Please fix version compatibility issues.", file=sys.stderr)
+            print("Tilelang requires PyTorch with uint16 support.", file=sys.stderr)
+            sys.exit(1)
+        fn = tilelang_fma
     else:  # jax
         fn = jax_fma
     
@@ -84,13 +99,15 @@ def main():
     print(f"  Stddev: {stddev_ms:.4f} ms")
     
     # Verify correctness
-    if args.impl in ["triton", "jax"]:
+    if args.impl in ["triton", "jax", "tilelang"]:
         print()
         print("Verifying correctness...")
         torch_result = torch_fma(x, a, b)
         
         if args.impl == "triton":
             impl_result = triton_fma(x, a, b)
+        elif args.impl == "tilelang":
+            impl_result = tilelang_fma(x, a, b)
         else:  # jax
             impl_result = jax_fma(x, a, b)
         

@@ -60,7 +60,7 @@ def run_benchmark(kernel: str, impl: str, extra_args: list) -> BenchmarkResult:
         
         # Check for "not implemented" or error messages
         if result.returncode != 0:
-            if "not implemented" in output.lower() or "jax not implemented" in output.lower():
+            if "not implemented" in output.lower() or "jax not implemented" in output.lower() or "not available" in output.lower():
                 return BenchmarkResult(error="Not implemented")
             else:
                 return BenchmarkResult(error=f"Error (exit code {result.returncode})")
@@ -163,7 +163,7 @@ def main():
         ("rmsnorm", ["--batch", "4096", "--hidden", "1024"]),
     ]
     
-    implementations = ["torch", "triton", "jax"]
+    implementations = ["torch", "triton", "jax", "tilelang"]
     
     # Store results: results[kernel][impl] = BenchmarkResult
     results: Dict[str, Dict[str, BenchmarkResult]] = {}

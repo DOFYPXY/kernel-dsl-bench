@@ -11,6 +11,7 @@ dependencies = [
     "numpy>=1.24.0",
     "torch>=2.0.0",
     "triton>=2.1.0",
+    "tilelang==0.1.0",
 ]
 
 [project.optional-dependencies]

@@ -22,6 +22,14 @@ from matmul_torch import torch_matmul
 from matmul_triton import triton_matmul
 from matmul_jax import jax_matmul
 
+try:
+    from matmul_tilelang import tilelang_matmul
+    TILELANG_AVAILABLE = True
+except (ImportError, AttributeError) as e:
+    TILELANG_AVAILABLE = False
+    tilelang_matmul = None
+    print(f"Warning: Tilelang not available ({type(e).__name__}: {e})", file=sys.stderr)
+
 
 def main():
     parser = argparse.ArgumentParser(
@@ -94,6 +102,11 @@ def main():
         fn = torch_matmul
     elif args.impl == "triton":
         fn = triton_matmul
+    elif args.impl == "tilelang":
+        if not TILELANG_AVAILABLE:
+            print("Error: Tilelang implementation not available", file=sys.stderr)
+            sys.exit(1)
+        fn = tilelang_matmul
     else:  # jax
         fn = jax_matmul
     
@@ -112,13 +125,15 @@ def main():
     print(f"  Performance: {tflops:.2f} TFLOPS")
     
     # Verify correctness
-    if args.impl in ["triton", "jax"]:
+    if args.impl in ["triton", "tilelang", "jax"]:
         print()
         print("Verifying correctness...")
         torch_result = torch_matmul(a, b)
         
         if args.impl == "triton":
             impl_result = triton_matmul(a, b)
+        elif args.impl == "tilelang":
+            impl_result = tilelang_matmul(a, b)
         else:  # jax
             impl_result = jax_matmul(a, b)
         

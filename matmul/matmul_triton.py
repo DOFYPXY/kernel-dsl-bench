@@ -67,8 +67,8 @@ def triton_matmul(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
 
     c = torch.empty((M, N), device=a.device, dtype=a.dtype)
 
-    BLOCK_SIZE_M = 128
-    BLOCK_SIZE_N = 128
+    BLOCK_SIZE_M = 64
+    BLOCK_SIZE_N = 64
     BLOCK_SIZE_K = 32
 
     grid = (triton.cdiv(M, BLOCK_SIZE_M) * triton.cdiv(N, BLOCK_SIZE_N),)

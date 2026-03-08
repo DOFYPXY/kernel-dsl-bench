@@ -42,11 +42,11 @@ __global__ void fma_kernel(const __grid_constant__ fma_globals g) {
     __syncthreads();
     kittens::warp::load(x_reg, x_s);
 
-    // y = x * a + b  (element-wise on the register tile)
+    // y = x * a + b
     kittens::warp::mul(y_reg, x_reg, g.a);
     kittens::warp::add(y_reg, y_reg, g.b);
 
-    // Register → Global (direct, no shared-memory bounce needed)
+    // Register → Global
     kittens::warp::store(g.y, y_reg, {0, 0, row, col});
 }
 
@@ -84,13 +84,9 @@ torch::Tensor tk_fma(const torch::Tensor& x, float a, float b) {
 
     dim3 grid(1, ROW_TILES);
     size_t smem = sizeof(st_fl<TILE_ROWS, TILE_COLS>);
-
-    cudaFuncSetAttribute(
-        fma_kernel,
-        cudaFuncAttributeMaxDynamicSharedMemorySize,
-        (int)smem
-    );
+    cudaFuncSetAttribute(fma_kernel, cudaFuncAttributeMaxDynamicSharedMemorySize, (int)smem);
     fma_kernel<<<grid, NUM_THREADS, smem>>>(g);
+    cudaDeviceSynchronize();
 
     // Flatten and strip padding
     return y2d.view({N_padded}).narrow(0, 0, N).contiguous();

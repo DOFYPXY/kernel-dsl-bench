@@ -1,0 +1,23 @@
+# -----------------------------------------------------------------------------
+# Python requirements for kernel-dsl-bench (ThunderKittens + Triton kernels)
+# -----------------------------------------------------------------------------
+# Install with:
+#   pip install -r requirements.txt --extra-index-url https://download.pytorch.org/whl/cu118
+#
+# NOTE: CUDA toolkit (nvcc 12.4) and ThunderKittens are NOT pip-installable.
+#       See README.md for full environment setup instructions.
+# -----------------------------------------------------------------------------
+
+# Deep learning framework — must match installed CUDA runtime (12.4 / driver 550.78)
+torch==2.0.1+cu118
+
+# GPU kernel DSLs
+triton==2.0.0
+
+# Numerics
+numpy==1.26.4
+
+# Build tools required for JIT compilation of ThunderKittens CUDA kernels
+cmake==3.25.0
+ninja==1.13.0
+setuptools==68.0.0

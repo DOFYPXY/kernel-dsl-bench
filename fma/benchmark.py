@@ -20,6 +20,7 @@ sys.path.insert(0, '..')
 from common import print_gpu_info, benchmark, verify_correctness, get_dtype, add_common_args
 from fma_torch import torch_fma
 from fma_triton import triton_fma
+from fma_tk import tk_fma
 
 try:
     from fma_jax import jax_fma
@@ -98,6 +99,8 @@ def main():
             print("Install JAX with: pip install jax", file=sys.stderr)
             sys.exit(1)
         fn = jax_fma
+    else:  # tk
+        fn = tk_fma
     
     # Run benchmark
     print("Running benchmark...")
@@ -110,17 +113,19 @@ def main():
     print(f"  Stddev: {stddev_ms:.4f} ms")
     
     # Verify correctness
-    if args.impl in ["triton", "jax", "tilelang"]:
+    if args.impl in ["triton", "jax", "tilelang", "tk"]:
         print()
         print("Verifying correctness...")
         torch_result = torch_fma(x, a, b)
-        
+
         if args.impl == "triton":
             impl_result = triton_fma(x, a, b)
         elif args.impl == "tilelang":
             impl_result = tilelang_fma(x, a, b)
-        else:  # jax
+        elif args.impl == "jax":
             impl_result = jax_fma(x, a, b)
+        else:  # tk
+            impl_result = tk_fma(x, a, b)
         
         is_correct, max_abs_diff = verify_correctness(impl_result, torch_result)
         

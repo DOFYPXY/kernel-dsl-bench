@@ -109,7 +109,7 @@ def add_common_args(parser: argparse.ArgumentParser) -> None:
     """
     parser.add_argument(
         "--impl",
-        choices=["torch", "triton", "jax", "tilelang"],
+        choices=["torch", "triton", "jax", "tk", "tilelang"],
         required=True,
         help="Which implementation to benchmark",
     )

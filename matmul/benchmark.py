@@ -37,6 +37,8 @@ except (ImportError, AttributeError) as e:
     tilelang_matmul = None
     print(f"Warning: Tilelang not available ({type(e).__name__}: {e})", file=sys.stderr)
 
+from matmul_tk import tk_matmul
+
 
 def main():
     parser = argparse.ArgumentParser(
@@ -79,9 +81,12 @@ def main():
     torch.manual_seed(args.seed)
     torch.cuda.manual_seed(args.seed)
     
-    # Determine data type
+    # Determine data type (TK MatMul kernel requires fp32)
+    if args.impl == "tk" and args.dtype != "fp32":
+        print(f"Note: TK MatMul kernel requires fp32; overriding dtype from {args.dtype} to fp32.")
+        args.dtype = "fp32"
     dtype = get_dtype(args.dtype)
-    
+
     # Allocate test matrices
     a = torch.randn((args.m, args.k), dtype=dtype, device="cuda")
     b = torch.randn((args.k, args.n), dtype=dtype, device="cuda")
@@ -114,12 +119,13 @@ def main():
             print("Error: Tilelang implementation not available", file=sys.stderr)
             sys.exit(1)
         fn = tilelang_matmul
-    else:  # jax
-        if not JAX_AVAILABLE:
-            print("Error: JAX implementation not available", file=sys.stderr)
-            print("Install JAX with: pip install jax", file=sys.stderr)
+    elif args.impl == "jax":
+        if jax_matmul is None:
+            print("JAX not installed", file=sys.stderr)
             sys.exit(1)
         fn = jax_matmul
+    else:  # tk
+        fn = tk_matmul
     
     # Run benchmark
     print("Running benchmark...")
@@ -136,21 +142,27 @@ def main():
     print(f"  Performance: {tflops:.2f} TFLOPS")
     
     # Verify correctness
-    if args.impl in ["triton", "tilelang", "jax"]:
+    if args.impl in ["triton", "tilelang", "jax", "tk"]:
         print()
         print("Verifying correctness...")
         torch_result = torch_matmul(a, b)
-        
+
         if args.impl == "triton":
             impl_result = triton_matmul(a, b)
         elif args.impl == "tilelang":
             impl_result = tilelang_matmul(a, b)
-        else:  # jax
+        elif args.impl == "jax":
             impl_result = jax_matmul(a, b)
+        else:  # tk
+            impl_result = tk_matmul(a, b)
         
         # Use relaxed tolerances for matmul due to accumulation errors
-        atol = 1e-2 if dtype == torch.float16 else 1e-4
-        rtol = 1e-2 if dtype == torch.float16 else 1e-4
+        if dtype == torch.float16:
+            atol, rtol = 1e-2, 1e-2
+        elif args.impl == "tk":
+            atol, rtol = 1e-3, 1e-3  # fp32 accumulation in TK kernel
+        else:
+            atol, rtol = 1e-4, 1e-4
         
         is_correct, max_abs_diff = verify_correctness(
             impl_result, torch_result, atol=atol, rtol=rtol

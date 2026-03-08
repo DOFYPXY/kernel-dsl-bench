@@ -161,11 +161,12 @@ def main():
     benchmarks = [
         ("fma", ["--n", "100000000"]),
         ("matmul", ["--m", "2048", "--n", "2048", "--k", "2048"]),
+        ("conv2d", ["--n", "1", "--cin", "64", "--cout", "64", "--h", "56", "--w", "56"]),
         ("rmsnorm", ["--batch", "4096", "--hidden", "1024"]),
         ("multihead_attention", ["--batch", "16", "--heads", "16", "--seq", "1024", "--head-dim", "64"]),
     ]
     
-    implementations = ["torch", "triton", "jax", "tilelang"]
+    implementations = ["torch", "triton", "tilelang"]
     
     # Store results: results[kernel][impl] = BenchmarkResult
     results: Dict[str, Dict[str, BenchmarkResult]] = {}

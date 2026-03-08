@@ -20,7 +20,14 @@ sys.path.insert(0, '..')
 from common import print_gpu_info, benchmark, verify_correctness, get_dtype, add_common_args
 from fma_torch import torch_fma
 from fma_triton import triton_fma
-from fma_jax import jax_fma
+
+try:
+    from fma_jax import jax_fma
+    JAX_AVAILABLE = True
+except (ImportError, AttributeError) as e:
+    JAX_AVAILABLE = False
+    jax_fma = None
+    print(f"Warning: JAX not available ({type(e).__name__}: {e})", file=sys.stderr)
 
 # Try to import tilelang, but don't fail if it's not available
 try:
@@ -86,6 +93,10 @@ def main():
             sys.exit(1)
         fn = tilelang_fma
     else:  # jax
+        if not JAX_AVAILABLE:
+            print("Error: JAX implementation not available", file=sys.stderr)
+            print("Install JAX with: pip install jax", file=sys.stderr)
+            sys.exit(1)
         fn = jax_fma
     
     # Run benchmark

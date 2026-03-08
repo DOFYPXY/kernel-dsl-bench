@@ -20,7 +20,14 @@ sys.path.insert(0, '..')
 from common import print_gpu_info, benchmark, verify_correctness, get_dtype, add_common_args
 from matmul_torch import torch_matmul
 from matmul_triton import triton_matmul
-from matmul_jax import jax_matmul
+
+try:
+    from matmul_jax import jax_matmul
+    JAX_AVAILABLE = True
+except (ImportError, AttributeError) as e:
+    JAX_AVAILABLE = False
+    jax_matmul = None
+    print(f"Warning: JAX not available ({type(e).__name__}: {e})", file=sys.stderr)
 
 try:
     from matmul_tilelang import tilelang_matmul
@@ -108,6 +115,10 @@ def main():
             sys.exit(1)
         fn = tilelang_matmul
     else:  # jax
+        if not JAX_AVAILABLE:
+            print("Error: JAX implementation not available", file=sys.stderr)
+            print("Install JAX with: pip install jax", file=sys.stderr)
+            sys.exit(1)
         fn = jax_matmul
     
     # Run benchmark

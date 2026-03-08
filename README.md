@@ -2,7 +2,7 @@
 
 Comparing GPU kernel implementations across PyTorch, Triton, and JAX.
 
-**Kernels:** FMA (Fused Multiply-Add), MatMul (Matrix Multiplication), RMSNorm (Root Mean Square Normalization)
+**Kernels:** FMA (Fused Multiply-Add), MatMul (Matrix Multiplication), RMSNorm (Root Mean Square Normalization), Multihead Attention
 
 **DSLs:** PyTorch, Triton, JAX
 
@@ -22,6 +22,11 @@ Directory: `matmul/`
 `y = x / sqrt(mean(x^2) + eps)` - Normalization operation
 
 Directory: `rmsnorm/`
+
+### 4. Multihead Attention
+Scaled dot-product attention over multiple heads.
+
+Directory: `multihead_attention/`
 
 ## Setup
 
@@ -47,6 +52,9 @@ python run.py matmul --impl torch/triton/jax --m 2048 --n 2048 --k 2048
 
 # RMSNorm benchmarks
 python run.py rmsnorm --impl torch/triton/jax --batch 4096 --hidden 1024
+
+# Multihead Attention benchmarks
+python run.py multihead_attention --impl torch --batch 16 --heads 16 --seq 1024 --head-dim 64
 ```
 
 ### From Kernel Directory
@@ -77,6 +85,9 @@ kernel-dsl/
     ├── rmsnorm_torch.py
     ├── rmsnorm_triton.py
     └── benchmark.py
+├── multihead_attention/   # Multihead attention kernel implementations
+│   ├── multihead_attention_torch.py
+│   └── benchmark.py
 ```
 
 Each kernel directory contains `*_<dsl>.py` files for PyTorch, Triton, and JAX implementations, plus a `benchmark.py` harness.

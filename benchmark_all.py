@@ -6,6 +6,7 @@ This script runs:
 - FMA with torch/triton/jax
 - Matmul with torch/triton/jax
 - RMSNorm with torch/triton/jax (jax not implemented, will mark as N/A)
+- Multihead Attention with torch/triton/jax (non-torch implementations will mark as N/A)
 
 And outputs a comprehensive table with timing and performance metrics.
 """
@@ -161,6 +162,7 @@ def main():
         ("fma", ["--n", "100000000"]),
         ("matmul", ["--m", "2048", "--n", "2048", "--k", "2048"]),
         ("rmsnorm", ["--batch", "4096", "--hidden", "1024"]),
+        ("multihead_attention", ["--batch", "16", "--heads", "16", "--seq", "1024", "--head-dim", "64"]),
     ]
     
     implementations = ["torch", "triton", "jax", "tilelang"]

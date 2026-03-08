@@ -20,6 +20,7 @@ def main():
         print("  matmul  - Matrix Multiplication")
         print("  rmsnorm  - Root Mean Square Normalization")
         print("  multihead_attention - Multihead Attention")
+        print("  conv2d   - 2D Convolution")
         print("")
         print("Examples:")
         print("  python run.py fma --impl torch")
@@ -32,9 +33,9 @@ def main():
     args = sys.argv[2:]
     
     # Validate kernel name
-    if kernel not in ["fma", "matmul", "rmsnorm", "multihead_attention"]:
+    if kernel not in ["fma", "matmul", "rmsnorm", "conv2d", "multihead_attention"]:
         print(f"Error: Unknown kernel '{kernel}'")
-        print("Valid kernels: fma, matmul, rmsnorm, multihead_attention")
+        print("Valid kernels: fma, matmul, rmsnorm, conv2d, multihead_attention")
         sys.exit(1)
     
     # Get root directory

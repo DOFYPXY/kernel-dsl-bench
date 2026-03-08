@@ -53,6 +53,12 @@ def _get_module():
 
     _CUDA_INC = os.path.join(_CUDA_HOME, "targets", "x86_64-linux", "include")
 
+    # Conda CUDA packages usually place libcudart in $CUDA_HOME/lib (not lib64).
+    _cuda_ldflags = []
+    for libdir in (os.path.join(_CUDA_HOME, "lib"), os.path.join(_CUDA_HOME, "lib64")):
+        if os.path.isdir(libdir):
+            _cuda_ldflags.extend([f"-L{libdir}", f"-Wl,-rpath,{libdir}"])
+
     import site
     nvidia_base = os.path.join(site.getsitepackages()[0], "nvidia")
     pip_nvidia_incs = []
@@ -72,12 +78,14 @@ def _get_module():
             "--expt-relaxed-constexpr",
             "-gencode", "arch=compute_75,code=sm_75",
             f"-I{_CUDA_INC}",
+            f"-I{_CUDA_INC}/cccl",
             f"-I{_TK_ROOT}/include",
             "-DNDEBUG",
             "-DKITTENS_AMPERE",
             "--use_fast_math",
             "-DTORCH_COMPILE",
         ] + pip_nvidia_incs,
+        extra_ldflags=_cuda_ldflags,
         verbose=False,
     )
     return _module

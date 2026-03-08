@@ -16,6 +16,7 @@ sys.path.insert(0, "..")
 
 from common import add_common_args, benchmark, get_dtype, print_gpu_info
 from multihead_attention_torch import torch_multihead_attention
+from multihead_attention_triton import triton_multihead_attention
 
 
 def main():
@@ -87,6 +88,8 @@ def main():
 
     if args.impl == "torch":
         fn = torch_multihead_attention
+    elif args.impl == "triton":
+        fn = triton_multihead_attention
     else:
         print(f"{args.impl.upper()} not implemented for multihead_attention", file=sys.stderr)
         sys.exit(1)

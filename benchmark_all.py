@@ -171,7 +171,7 @@ def main():
     
     # Define benchmark configurations
     benchmarks = [
-        ("fma", ["--n", "100000000"]),
+        ("fma", ["--n", "10000000"]),
         ("matmul", ["--m", "1024", "--n", "1024", "--k", "1024"]),
         ("conv2d", ["--n", "1", "--cin", "64", "--cout", "64", "--h", "56", "--w", "56"]),
         ("rmsnorm", ["--batch", "4096", "--hidden", "1024"]),

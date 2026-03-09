@@ -32,21 +32,13 @@ class BenchmarkResult:
 
 def run_benchmark(kernel: str, impl: str, extra_args: list) -> BenchmarkResult:
     """Run a single benchmark and parse the output."""
-    # Use venv Python if available
-    script_dir = os.path.dirname(os.path.abspath(__file__))
-    venv_python = os.path.join(script_dir, "venv", "bin", "python")
-    
-    if os.path.exists(venv_python):
-        python_exec = venv_python
-    else:
-        python_exec = sys.executable
-    
-    cmd = [python_exec, "run.py", kernel, "--impl", impl] + extra_args
+    # Use current Python environment (assumes venv is activated)
+    cmd = [sys.executable, "run.py", kernel, "--impl", impl] + extra_args
     
     print(f"Running: {' '.join(cmd)}")
     
     try:
-        timeout_s = 300 if impl == "tk" else 120
+        timeout_s = 120
 
         result = subprocess.run(
             cmd,
@@ -178,7 +170,7 @@ def main():
         ("multihead_attention", ["--batch", "16", "--heads", "16", "--seq", "1024", "--head-dim", "64"]),
     ]
     
-    implementations = ["torch", "triton", "tk", "tilelang"]
+    implementations = ["torch", "triton", "tilelang"]
     
     # Store results: results[kernel][impl] = BenchmarkResult
     results: Dict[str, Dict[str, BenchmarkResult]] = {}

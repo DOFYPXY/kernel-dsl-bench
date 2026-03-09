@@ -136,15 +136,43 @@ def save_to_csv(results: Dict[str, Dict[str, BenchmarkResult]],
     print(f"\nResults saved to: {filename}")
 
 
+def save_parameters(
+    benchmarks: list,
+    implementations: list,
+    filename: str,
+    short_run: bool,
+    warmup: int,
+    iters: int,
+):
+    """Save benchmark configuration parameters to a text file."""
+    with open(filename, "w") as f:
+        f.write("Benchmark Parameters\n")
+        f.write("=" * 80 + "\n")
+        f.write(f"Implementations: {', '.join(implementations)}\n")
+        f.write(f"Short run mode: {'enabled' if short_run else 'disabled'}\n")
+        f.write(f"Warmup iterations: {warmup}\n")
+        f.write(f"Timed iterations: {iters}\n")
+        f.write("\n")
+
+        f.write("Kernel Arguments\n")
+        f.write("-" * 80 + "\n")
+        for kernel, kernel_args in benchmarks:
+            f.write(f"{kernel}: {' '.join(kernel_args)}\n")
+
+    print(f"Parameters saved to: {filename}")
+
+
 def main():
     parser = argparse.ArgumentParser(
         description="Run all kernel benchmarks and collect results into a table"
     )
     parser.add_argument(
-        "--csv",
+        "-o",
+        "--output-dir",
         type=str,
-        metavar="FILENAME",
-        help="Save results to CSV file (e.g., results.csv)"
+        default=".",
+        metavar="DIR",
+        help="Output directory for generated files (time.csv, param.txt)"
     )
     parser.add_argument(
         "--short-run",
@@ -153,6 +181,13 @@ def main():
     )
     
     args = parser.parse_args()
+
+    os.makedirs(args.output_dir, exist_ok=True)
+
+    default_warmup = 20
+    default_iters = 200
+    effective_warmup = 1 if args.short_run else default_warmup
+    effective_iters = 1 if args.short_run else default_iters
     
     print("=" * 80)
     print("Running All Kernel Benchmarks")
@@ -182,7 +217,7 @@ def main():
         print(f"Kernel: {kernel.upper()}")
         print(f"{'=' * 80}")
 
-        run_args = bench_args + (["--warmup", "1", "--iters", "1"] if args.short_run else [])
+        run_args = bench_args + ["--warmup", str(effective_warmup), "--iters", str(effective_iters)]
         
         for impl in implementations:
             result = run_benchmark(kernel, impl, run_args)
@@ -257,9 +292,18 @@ def main():
     
     print()
     
-    # Save to CSV if requested
-    if args.csv:
-        save_to_csv(results, benchmarks, implementations, args.csv)
+    # Save output artifacts
+    time_csv_path = os.path.join(args.output_dir, "time.csv")
+    param_txt_path = os.path.join(args.output_dir, "param.txt")
+    save_to_csv(results, benchmarks, implementations, time_csv_path)
+    save_parameters(
+        benchmarks,
+        implementations,
+        param_txt_path,
+        args.short_run,
+        effective_warmup,
+        effective_iters,
+    )
 
 
 if __name__ == "__main__":

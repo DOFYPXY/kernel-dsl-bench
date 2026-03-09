@@ -49,7 +49,7 @@ def main():
     add_common_args(parser)
     
     # Override dtype default for MatMul
-    parser.set_defaults(dtype="fp32")
+    parser.set_defaults(dtype="fp16")
     
     # Add MatMul-specific arguments
     parser.add_argument(

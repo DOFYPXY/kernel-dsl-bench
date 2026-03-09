@@ -2,7 +2,12 @@
 
 from .fma_torch import torch_fma
 from .fma_triton import triton_fma
-from .fma_jax import jax_fma
+
+# Try to import jax if available
+try:
+    from .fma_jax import jax_fma
+except (ImportError, AttributeError):
+    jax_fma = None
 
 # Try to import tilelang if available
 try:

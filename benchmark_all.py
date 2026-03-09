@@ -2,12 +2,9 @@
 """
 Run all kernel benchmarks and collect results into a table.
 
-This script runs:
-- FMA with torch/triton/jax
-- Matmul with torch/triton/jax
-- RMSNorm with torch/triton/jax (jax not implemented, will mark as N/A)
+This script runs all configured kernels against selected implementations
+and outputs a comprehensive table with timing and performance metrics.
 
-And outputs a comprehensive table with timing and performance metrics.
 """
 
 import subprocess
@@ -49,18 +46,27 @@ def run_benchmark(kernel: str, impl: str, extra_args: list) -> BenchmarkResult:
     print(f"Running: {' '.join(cmd)}")
     
     try:
+        timeout_s = 300 if impl == "tk" else 120
+
         result = subprocess.run(
             cmd,
             capture_output=True,
             text=True,
-            timeout=120
+            timeout=timeout_s
         )
         
         output = result.stdout + result.stderr
         
-        # Check for "not implemented" or error messages
+        # Check for "not implemented" with precise patterns only.
+        # Avoid matching generic dependency warnings (e.g. "JAX not available").
         if result.returncode != 0:
-            if "not implemented" in output.lower() or "jax not implemented" in output.lower() or "not available" in output.lower():
+            output_lc = output.lower()
+            not_impl_patterns = [
+                " not implemented for ",
+                "jax not implemented",
+                "impl not provided",
+            ]
+            if any(pat in output_lc for pat in not_impl_patterns):
                 return BenchmarkResult(error="Not implemented")
             else:
                 return BenchmarkResult(error=f"Error (exit code {result.returncode})")
@@ -148,22 +154,31 @@ def main():
         metavar="FILENAME",
         help="Save results to CSV file (e.g., results.csv)"
     )
+    parser.add_argument(
+        "--short-run",
+        action="store_true",
+        help="Use warmup=1 and iters=1 for a quick smoke run"
+    )
     
     args = parser.parse_args()
     
     print("=" * 80)
     print("Running All Kernel Benchmarks")
     print("=" * 80)
+    if args.short_run:
+        print("Mode: short-run (--warmup 1 --iters 1)")
     print()
     
     # Define benchmark configurations
     benchmarks = [
-        ("fma", ["--n", "100000000"]),
-        ("matmul", ["--m", "2048", "--n", "2048", "--k", "2048"]),
+        ("fma", ["--n", "10000000"]),
+        ("matmul", ["--m", "1024", "--n", "1024", "--k", "1024"]),
+        ("conv2d", ["--n", "1", "--cin", "64", "--cout", "64", "--h", "56", "--w", "56"]),
         ("rmsnorm", ["--batch", "4096", "--hidden", "1024"]),
+        ("multihead_attention", ["--batch", "16", "--heads", "16", "--seq", "1024", "--head-dim", "64"]),
     ]
     
-    implementations = ["torch", "triton", "jax", "tilelang"]
+    implementations = ["torch", "triton", "tk", "tilelang"]
     
     # Store results: results[kernel][impl] = BenchmarkResult
     results: Dict[str, Dict[str, BenchmarkResult]] = {}
@@ -174,9 +189,11 @@ def main():
         print(f"\n{'=' * 80}")
         print(f"Kernel: {kernel.upper()}")
         print(f"{'=' * 80}")
+
+        run_args = bench_args + (["--warmup", "1", "--iters", "1"] if args.short_run else [])
         
         for impl in implementations:
-            result = run_benchmark(kernel, impl, bench_args)
+            result = run_benchmark(kernel, impl, run_args)
             results[kernel][impl] = result
             
             if result.is_available():

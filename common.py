@@ -109,7 +109,7 @@ def add_common_args(parser: argparse.ArgumentParser) -> None:
     """
     parser.add_argument(
         "--impl",
-        choices=["torch", "triton", "jax", "tilelang"],
+        choices=["torch", "triton", "jax", "tk", "tilelang"],
         required=True,
         help="Which implementation to benchmark",
     )
@@ -136,4 +136,21 @@ def add_common_args(parser: argparse.ArgumentParser) -> None:
         type=int,
         default=42,
         help="Random seed (default: 42)",
+    )
+    parser.add_argument(
+        "--device",
+        type=int,
+        default=0,
+        help="GPU device ID (default: 0)",
+    )
+    parser.add_argument(
+        "--verify-device",
+        type=int,
+        default=None,
+        help="GPU device ID for verification (default: same as --device)",
+    )
+    parser.add_argument(
+        "--clear-cache",
+        action="store_true",
+        help="Clear GPU cache between operations",
     )

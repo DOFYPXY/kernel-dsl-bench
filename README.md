@@ -1,10 +1,10 @@
 # GPU Kernel DSL Benchmarks
 
-Comparing GPU kernel implementations across PyTorch, Triton, and JAX.
+Comparing GPU kernel implementations across PyTorch, Triton, JAX, and ThunderKittens.
 
-**Kernels:** FMA (Fused Multiply-Add), MatMul (Matrix Multiplication), RMSNorm (Root Mean Square Normalization)
+**Kernels:** FMA (Fused Multiply-Add), MatMul (Matrix Multiplication), RMSNorm (Root Mean Square Normalization), Multihead Attention
 
-**DSLs:** PyTorch, Triton, JAX
+**DSLs:** PyTorch, Triton, JAX, ThunderKittens (TK)
 
 ## Benchmarked Kernels
 
@@ -23,6 +23,11 @@ Directory: `matmul/`
 
 Directory: `rmsnorm/`
 
+### 4. Multihead Attention
+Scaled dot-product attention over multiple heads.
+
+Directory: `multihead_attention/`
+
 ## Setup
 
 ```bash
@@ -40,13 +45,19 @@ pip install -e ".[jax]"       # Add JAX support
 ### From Root Directory (Recommended)
 ```bash
 # FMA benchmarks
-python run.py fma --impl torch/triton/jax --n 100000000
+python run.py fma --impl torch/triton/jax/tk --n 100000000
 
 # MatMul benchmarks
-python run.py matmul --impl torch/triton/jax --m 2048 --n 2048 --k 2048
+python run.py matmul --impl torch/triton/jax/tk --m 2048 --n 2048 --k 2048
 
 # RMSNorm benchmarks
-python run.py rmsnorm --impl torch/triton/jax --batch 4096 --hidden 1024
+python run.py rmsnorm --impl torch/triton/jax/tk --batch 4096 --hidden 1024
+
+# Multihead Attention benchmarks
+python run.py multihead_attention --impl torch/triton/tk --batch 16 --heads 16 --seq 1024 --head-dim 64
+
+# Conv2D benchmarks
+python run.py conv2d --impl torch/triton/tk --n 1 --cin 64 --cout 64 --h 56 --w 56
 ```
 
 ### From Kernel Directory
@@ -55,7 +66,7 @@ python run.py rmsnorm --impl torch/triton/jax --batch 4096 --hidden 1024
 cd fma
 python benchmark.py --impl torch/triton/jax
 
-# Custom: python benchmark.py --impl triton --n 100000000
+# Custom: python benchmark.py --impl tk --n 100000000
 ```
 
 ## Project Structure
@@ -77,7 +88,9 @@ kernel-dsl/
     ├── rmsnorm_torch.py
     ├── rmsnorm_triton.py
     └── benchmark.py
+├── multihead_attention/   # Multihead attention kernel implementations
+│   ├── multihead_attention_torch.py
+│   └── benchmark.py
 ```
 
 Each kernel directory contains `*_<dsl>.py` files for PyTorch, Triton, and JAX implementations, plus a `benchmark.py` harness.
-

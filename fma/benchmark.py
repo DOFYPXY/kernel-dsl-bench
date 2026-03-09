@@ -20,7 +20,24 @@ sys.path.insert(0, '..')
 from common import print_gpu_info, benchmark, verify_correctness, get_dtype, add_common_args
 from fma_torch import torch_fma
 from fma_triton import triton_fma
-from fma_jax import jax_fma
+from fma_tk import tk_fma
+
+try:
+    from fma_jax import jax_fma
+    JAX_AVAILABLE = True
+except (ImportError, AttributeError) as e:
+    JAX_AVAILABLE = False
+    jax_fma = None
+    print(f"Warning: JAX not available ({type(e).__name__}: {e})", file=sys.stderr)
+
+# Try to import tilelang, but don't fail if it's not available
+try:
+    from fma_tilelang import tilelang_fma
+    TILELANG_AVAILABLE = True
+except (ImportError, AttributeError) as e:
+    TILELANG_AVAILABLE = False
+    tilelang_fma = None
+    print(f"Warning: Tilelang not available ({type(e).__name__}: {e})", file=sys.stderr)
 
 # Try to import tilelang, but don't fail if it's not available
 try:
@@ -85,8 +102,14 @@ def main():
             print("Tilelang requires PyTorch with uint16 support.", file=sys.stderr)
             sys.exit(1)
         fn = tilelang_fma
-    else:  # jax
+    elif args.impl == "jax":
+        if not JAX_AVAILABLE:
+            print("Error: JAX implementation not available", file=sys.stderr)
+            print("Install JAX with: pip install jax", file=sys.stderr)
+            sys.exit(1)
         fn = jax_fma
+    else:  # tk
+        fn = tk_fma
     
     # Run benchmark
     print("Running benchmark...")
@@ -99,17 +122,19 @@ def main():
     print(f"  Stddev: {stddev_ms:.4f} ms")
     
     # Verify correctness
-    if args.impl in ["triton", "jax", "tilelang"]:
+    if args.impl in ["triton", "jax", "tilelang", "tk"]:
         print()
         print("Verifying correctness...")
         torch_result = torch_fma(x, a, b)
-        
+
         if args.impl == "triton":
             impl_result = triton_fma(x, a, b)
         elif args.impl == "tilelang":
             impl_result = tilelang_fma(x, a, b)
-        else:  # jax
+        elif args.impl == "jax":
             impl_result = jax_fma(x, a, b)
+        else:  # tk
+            impl_result = tk_fma(x, a, b)
         
         is_correct, max_abs_diff = verify_correctness(impl_result, torch_result)
         

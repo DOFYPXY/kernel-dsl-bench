@@ -15,7 +15,10 @@ import tilelang
 from tilelang import Profiler
 import tilelang.language as T
 
-os.environ["PATH"] = "/usr/local/cuda-12.1/bin:" + os.environ.get("PATH", "")
+# Add CUDA to PATH if needed (use standard symlink, not version-specific)
+cuda_bin = "/usr/local/cuda/bin"
+if os.path.isdir(cuda_bin) and cuda_bin not in os.environ.get("PATH", ""):
+    os.environ["PATH"] = cuda_bin + ":" + os.environ.get("PATH", "")
 
 _kernel_cache: dict = {}
 

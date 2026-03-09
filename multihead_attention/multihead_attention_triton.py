@@ -14,6 +14,7 @@ def _mha_fwd_kernel(
     stride_oz, stride_oh, stride_om, stride_ok,
     Z, H, N_CTX,
     HEAD_DIM: tl.constexpr,
+    QK_SCALE: tl.constexpr,
     BLOCK_M: tl.constexpr,
     BLOCK_N: tl.constexpr,
     CAUSAL: tl.constexpr,
@@ -43,8 +44,8 @@ def _mha_fwd_kernel(
         other=0.0,
     )
 
-    # scale
-    qk_scale = 1.0 / math.sqrt(HEAD_DIM)
+    # Precomputed on host side to avoid constexpr/Python math interaction issues.
+    qk_scale = QK_SCALE
 
     # running stats for online softmax
     m_i = tl.full((BLOCK_M,), float("-inf"), dtype=tl.float32)
@@ -175,8 +176,11 @@ def triton_multihead_attention(
 
     o = torch.empty_like(q)
 
-    BLOCK_M = 64
-    BLOCK_N = 64
+    # Keep tile sizes conservative so the kernel fits 64KB shared-memory GPUs
+    # like RTX 2080 Ti (sm_75).
+    BLOCK_M = 32
+    BLOCK_N = 32
+    qk_scale = 1.0 / math.sqrt(D)
 
     grid = (triton.cdiv(S, BLOCK_M), B * H)
 
@@ -190,11 +194,12 @@ def triton_multihead_attention(
         o.stride(0), o.stride(1), o.stride(2), o.stride(3),
         B, H, S,
         HEAD_DIM=D,
+        QK_SCALE=qk_scale,
         BLOCK_M=BLOCK_M,
         BLOCK_N=BLOCK_N,
         CAUSAL=causal,
         num_warps=num_warps,
-        num_stages=2,
+        num_stages=1,
     )
 
     return o

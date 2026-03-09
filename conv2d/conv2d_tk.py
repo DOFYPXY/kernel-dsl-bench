@@ -76,6 +76,7 @@ def _get_module():
             "-ccbin", "/usr/bin/gcc",
             "--expt-extended-lambda",
             "--expt-relaxed-constexpr",
+            "-DcudaLaunchAttributePreferredClusterDimension=cudaLaunchAttributeClusterDimension",
             "-gencode", "arch=compute_75,code=sm_75",
             f"-I{_CUDA_INC}",
             f"-I{_CUDA_INC}/cccl",
@@ -93,27 +94,27 @@ def _get_module():
 
 def tk_conv2d(
     x: torch.Tensor,
-    weight: torch.Tensor,
+    w: torch.Tensor,
     bias: torch.Tensor | None = None,
     stride: int = 1,
-    padding: int = 0,
+    padding: int = 1,
 ) -> torch.Tensor:
     """
-    ThunderKittens 2D convolution: y = conv2d(x, weight, bias=None, stride=1, padding=0).
+    ThunderKittens 2D convolution: y = conv2d(x, w, bias=None, stride=1, padding=1).
 
     Args:
         x:       (N, C_in, H, W) float32 CUDA tensor
-        weight:  (C_out, C_in, KH, KW) float32 CUDA tensor
+        w:       (C_out, C_in, KH, KW) float32 CUDA tensor
         bias:    (C_out,) float32 CUDA tensor, optional
         stride:  convolution stride (default: 1)
-        padding: zero-padding (default: 0)
+        padding: zero-padding (default: 1)
 
     Returns:
         (N, C_out, OH, OW) float32 CUDA tensor
     """
     x      = x.contiguous()
-    weight = weight.contiguous()
+    w = w.contiguous()
     if bias is not None:
         bias = bias.contiguous()
 
-    return _get_module().conv2d(x, weight, bias, stride, padding)
+    return _get_module().conv2d(x, w, bias, stride, padding)

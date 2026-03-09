@@ -93,7 +93,7 @@ def main():
             print("Tilelang requires PyTorch with uint16 support.", file=sys.stderr)
             sys.exit(1)
         fn = tilelang_fma
-    else:  # jax
+    elif args.impl == "jax":
         if not JAX_AVAILABLE:
             print("Error: JAX implementation not available", file=sys.stderr)
             print("Install JAX with: pip install jax", file=sys.stderr)

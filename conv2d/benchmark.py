@@ -20,6 +20,7 @@ sys.path.insert(0, "..")
 from common import print_gpu_info, benchmark, verify_correctness, get_dtype, add_common_args
 from conv2d_torch import torch_conv2d
 from conv2d_triton import triton_conv2d_3x3_s1p1
+from conv2d_tk import tk_conv2d
 
 
 def main():
@@ -64,6 +65,8 @@ def main():
         fn = lambda _x, _w: torch_conv2d(_x, _w, bias=None, stride=1, padding=1)
     elif args.impl == "triton":
         fn = triton_conv2d_3x3_s1p1
+    elif args.impl == "tk":
+        fn = lambda _x, _w: tk_conv2d(_x, _w, bias=None, stride=1, padding=1)
     else:
         print("JAX impl not provided for conv2d in this project yet.", file=sys.stderr)
         sys.exit(1)

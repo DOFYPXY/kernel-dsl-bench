@@ -74,6 +74,7 @@ def _get_module():
             "-ccbin", "/usr/bin/gcc",
             "--expt-extended-lambda",
             "--expt-relaxed-constexpr",
+            "-DcudaLaunchAttributePreferredClusterDimension=cudaLaunchAttributeClusterDimension",
             "-gencode", "arch=compute_75,code=sm_75",
             f"-I{_CUDA_INC}",
             f"-I{_CUDA_INC}/cccl",
@@ -93,7 +94,7 @@ def tk_multihead_attention(
     q: torch.Tensor,
     k: torch.Tensor,
     v: torch.Tensor,
-    scale: float | None = None,
+    causal: bool = False,
 ) -> torch.Tensor:
     """
     ThunderKittens multihead attention: Out = softmax(QK^T / sqrt(D)) * V.
@@ -102,7 +103,7 @@ def tk_multihead_attention(
         q: (B, H, S, D) float32 CUDA tensor, D ≤ 64
         k: (B, H, S, D) float32 CUDA tensor
         v: (B, H, S, D) float32 CUDA tensor
-        scale: attention scale (default: 1/sqrt(D))
+        causal: whether to apply causal masking (currently unsupported)
 
     Returns:
         (B, H, S, D) float32 CUDA tensor
@@ -111,8 +112,10 @@ def tk_multihead_attention(
     k = k.contiguous()
     v = v.contiguous()
 
+    if causal:
+        raise NotImplementedError("tk_multihead_attention currently supports causal=False only")
+
     D = q.shape[-1]
-    if scale is None:
-        scale = 1.0 / math.sqrt(D)
+    scale = 1.0 / math.sqrt(D)
 
     return _get_module().mha_fwd(q, k, v, scale)

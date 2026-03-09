@@ -76,6 +76,7 @@ def _get_module():
             "-ccbin", "/usr/bin/gcc",
             "--expt-extended-lambda",
             "--expt-relaxed-constexpr",
+            "-DcudaLaunchAttributePreferredClusterDimension=cudaLaunchAttributeClusterDimension",
             "-gencode", "arch=compute_75,code=sm_75",
             f"-I{_CUDA_INC}",
             f"-I{_CUDA_INC}/cccl",

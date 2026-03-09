@@ -178,7 +178,8 @@ def main():
         ("multihead_attention", ["--batch", "16", "--heads", "16", "--seq", "1024", "--head-dim", "64"]),
     ]
     
-    implementations = ["torch", "triton", "tk", "tilelang"]
+    # implementations = ["torch", "triton", "tk", "tilelang"]
+    implementations = ["tk"]  # Exclude tilelang for now since it's not implemented for all kernels
     
     # Store results: results[kernel][impl] = BenchmarkResult
     results: Dict[str, Dict[str, BenchmarkResult]] = {}

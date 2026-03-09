@@ -14,7 +14,8 @@ TK kernels are available for: **FMA**, **MatMul**, **RMSNorm**, **Conv2d**, and
 - NVIDIA GPU with compute capability ≥ sm_75 (Turing, Ampere, Ada, or Hopper)
 - NVIDIA driver ≥ 450. Driver 550.x supports CUDA runtime ≤ 12.4 — see
   [Pinning the CUDA runtime](#pinning-the-cuda-runtime) if this applies to you
-- GCC ≥ 9 at `/usr/bin/gcc` (used as the nvcc host compiler)
+- GCC ≥ 9 at `/usr/bin/gcc` (used as the nvcc host compiler — GCC 11.3 was used when developing these kernels)
+- [Miniconda](https://docs.conda.io/en/latest/miniconda.html) or Anaconda
 
 ---
 
@@ -26,7 +27,13 @@ TK kernels are available for: **FMA**, **MatMul**, **RMSNorm**, **Conv2d**, and
 git clone https://github.com/HazyResearch/ThunderKittens ~/ThunderKittens
 ```
 
-Adjust the path if you prefer a different location; update `TK_ROOT` accordingly.
+The kernels in this repo were developed and tested against commit `6fd51f22b5489c544e4f33fb1a21b3d39a79984a` (main branch). To pin to that exact revision:
+
+```bash
+git -C ~/ThunderKittens checkout 6fd51f22b5489c544e4f33fb1a21b3d39a79984a
+```
+
+Adjust the clone path if you prefer a different location; update `TK_ROOT` accordingly.
 
 ### 2. Create Conda Environment
 
@@ -34,12 +41,20 @@ Adjust the path if you prefer a different location; update `TK_ROOT` accordingly
 conda create -n tk_env python=3.10
 conda activate tk_env
 
-# Install CUDA 12.4 toolkit, headers, and runtime via conda
-conda install -c nvidia cuda-nvcc=12.4 cuda-cudart=12.4 cuda-toolkit=12.4
+# Install CUDA 12.4 compiler and runtime only.
+# Do NOT install cuda-toolkit — it pulls in 13.x CCCL headers that conflict with nvcc 12.4.
+conda install -c nvidia "cuda-nvcc=12.4" "cuda-cudart=12.4" "cuda-cudart-dev=12.4"
 
 # Install Python packages (pinned versions in requirements.txt)
 pip install -r requirements.txt --extra-index-url https://download.pytorch.org/whl/cu118
 ```
+
+> **Why not `cuda-toolkit`?** `cuda-toolkit=12.4` resolves several of its dependencies
+> from the latest available channel versions, which installs `cuda-cccl_linux-64 13.x`
+> alongside nvcc 12.4. If those 13.x CCCL headers are placed on the compiler include path
+> they trigger a hard error: _"CUDA compiler and CUDA toolkit headers are incompatible"_.
+> The `*_tk.py` JIT loaders have already been patched to avoid this include path, but
+> installing only `cuda-nvcc` + `cuda-cudart` keeps the environment clean from the start.
 
 ### 3. Pinning the CUDA Runtime
 
@@ -93,7 +108,8 @@ export LD_LIBRARY_PATH=$CONDA_PREFIX/lib:$LD_LIBRARY_PATH
 ```
 
 > **Note:** `CUDA_INC` is read by each `*_tk.py` JIT loader at import time to pass
-> `-I${CUDA_INC}` to `nvcc`. If unset, loaders fall back to `$CUDA_HOME/include`.
+> `-I${CUDA_INC}` to `nvcc`. If unset, loaders fall back to
+> `$CUDA_HOME/targets/x86_64-linux/include`.
 
 ---
 
@@ -114,13 +130,18 @@ ThunderKittens kernels are compiled on the **first import** via
 --expt-extended-lambda
 --expt-relaxed-constexpr
 -gencode arch=compute_75,code=sm_75    # matches TORCH_CUDA_ARCH_LIST
--I${CUDA_INC}
+-I${CUDA_INC}                          # = $CUDA_HOME/targets/x86_64-linux/include
 -I${TK_ROOT}/include
 -DNDEBUG
 -DKITTENS_AMPERE
 --use_fast_math
 -DTORCH_COMPILE
 ```
+
+> **Important — do not add `-I${CUDA_INC}/cccl`**. That subdirectory may contain
+> CCCL headers from a newer toolkit version (e.g. 13.x) even when nvcc is 12.4, which
+> triggers a hard compile error. nvcc 12.4 resolves its own `cuda/pipeline` and related
+> headers internally; no explicit CCCL `-I` path is needed.
 
 **Forcing a recompile** (e.g. after editing a `.cu` file):
 ```bash
@@ -149,15 +170,14 @@ python run.py matmul --impl tk --m 1024 --n 1024 --k 1024
 # RMSNorm  (default: 4096×1024)
 python run.py rmsnorm --impl tk
 
-# Conv2d  (default: 8×32×56×56 input, 64×32×3×3 filter)
+# Conv2d  (default: N=1, Cin=64, Cout=64, H=56, W=56, 3×3 kernel)
 python run.py conv2d --impl tk
-python run.py conv2d --impl tk --batch 8 --c_in 32 --c_out 64 \
-    --height 56 --width 56 --kh 3 --kw 3
+python run.py conv2d --impl tk --n 1 --cin 64 --cout 64 --h 56 --w 56
 
-# Multihead Attention  (default: B=4, H=8, S=512, D=64)
+# Multihead Attention  (default: B=16, H=16, S=1024, D=64)
 python run.py multihead_attention --impl tk
 python run.py multihead_attention --impl tk \
-    --batch 4 --heads 8 --seqlen 512 --headdim 64
+    --batch 16 --heads 16 --seq 1024 --head-dim 64
 ```
 
 > **Constraints:**
@@ -170,23 +190,24 @@ python run.py multihead_attention --impl tk \
 cd fma         && python benchmark.py --impl tk --warmup 5 --iters 20
 cd matmul      && python benchmark.py --impl tk --m 1024 --n 1024 --k 1024
 cd rmsnorm     && python benchmark.py --impl tk
-cd conv2d      && python benchmark.py --impl tk \
-                      --batch 8 --c_in 32 --c_out 64 --height 56 --width 56
+cd conv2d && python benchmark.py --impl tk --n 1 --cin 64 --cout 64 --h 56 --w 56
 cd multihead_attention && python benchmark.py --impl tk \
-                              --batch 4 --heads 8 --seqlen 512 --headdim 64
+                              --batch 16 --heads 16 --seq 1024 --head-dim 64
 ```
 
 ---
 
-## Benchmark Results (RTX 2080 Ti, sm_75)
+## Benchmark Results (RTX 2080 Ti, sm_75, nvcc 12.4)
+
+Measured with the default configs in `benchmark_all.py` (warmup=20, iters=200):
 
 | Kernel | Config | TK Time | TK Throughput |
 |--------|--------|---------|---------------|
-| FMA | 10M elements | 0.46 ms | — |
-| MatMul | 1024×1024×1024 | 5.96 ms | 0.36 TFLOPS |
-| RMSNorm | 4096×1024 | 0.16 ms | — |
-| Conv2d | 8×32×56×56, 64×32×3×3 | 0.74 ms | 1.24 TFLOPS |
-| Multihead Attention | B=4, H=8, S=512, D=64 | 8.13 ms | 0.26 TFLOPS |
+| FMA | 10M elements | 0.45 ms | — |
+| MatMul | 1024×1024×1024 | 4.74 ms | 0.45 TFLOPS |
+| RMSNorm | 4096×1024 | 0.15 ms | — |
+| Conv2d | 1×64×56×56, 64×64×3×3 | 0.58 ms | — |
+| Multihead Attention | B=16, H=16, S=1024, D=64 | 209.9 ms | 0.33 TFLOPS |
 
 ---
 

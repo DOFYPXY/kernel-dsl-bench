@@ -1,0 +1,6 @@
+Kernel,Implementation,Mean Time (ms),Stddev (ms),Performance (TFLOPS)
+fma,tk,0.3976,0.0158,N/A
+matmul,tk,4.5980,0.4889,0.47
+conv2d,tk,0.5897,0.0281,N/A
+rmsnorm,tk,0.1257,0.0178,N/A
+multihead_attention,tk,209.7945,0.2014,0.33

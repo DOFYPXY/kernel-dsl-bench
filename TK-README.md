@@ -90,10 +90,6 @@ export TORCH_CUDA_ARCH_LIST="7.5"
 # Ensure conda-installed tools and libraries are preferred
 export PATH=$CONDA_PREFIX/bin:$PATH
 export LD_LIBRARY_PATH=$CONDA_PREFIX/lib:$LD_LIBRARY_PATH
-
-# Xuanyu added this. It works for some unknown reason.
-export NVCC_PREPEND_FLAGS="-DcudaLaunchAttributePreferredClus
-terDimension=cudaLaunchAttributeClusterDimension"
 ```
 
 > **Note:** `CUDA_INC` is read by each `*_tk.py` JIT loader at import time to pass

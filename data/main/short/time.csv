@@ -1,0 +1,16 @@
+Kernel,Implementation,Mean Time (ms),Stddev (ms),Performance (TFLOPS)
+fma,torch,0.3717,0.0000,N/A
+fma,triton,0.2335,0.0000,N/A
+fma,tilelang,0.3212,0.0000,N/A
+matmul,torch,0.1374,0.0000,15.63
+matmul,triton,0.5427,0.0000,3.96
+matmul,tilelang,0.2327,0.0000,9.23
+conv2d,torch,0.1341,0.0000,N/A
+conv2d,triton,0.4375,0.0000,N/A
+conv2d,tilelang,N/A,N/A,N/A
+rmsnorm,torch,0.2658,0.0000,N/A
+rmsnorm,triton,0.1788,0.0000,N/A
+rmsnorm,tilelang,0.5289,0.0000,N/A
+multihead_attention,torch,11.8395,0.0000,5.80
+multihead_attention,triton,34.1278,0.0000,2.01
+multihead_attention,tilelang,N/A,N/A,N/A

@@ -1,0 +1,8 @@
+MatMul Size Sweep Parameters
+================================================================================
+Implementations: torch, triton, tilelang
+Warmup iterations: 10
+Timed iterations: 50
+Seed: 42
+
+Sizes (16): [128, 256, 384, 512, 640, 768, 896, 1024, 1152, 1280, 1408, 1536, 1664, 1792, 1920, 2048]

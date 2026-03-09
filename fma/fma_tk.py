@@ -65,6 +65,19 @@ def _get_module():
             if os.path.isdir(inc):
                 pip_nvidia_incs.append(f"-I{inc}")
 
+    # cudaLaunchAttributePreferredClusterDimension was introduced in CUDA 12.0.
+    # On minimal conda installs the CUDA 12.4 driver_types.h may not be on the
+    # search path yet, so TK's util.cuh fails to find it. Detect and add a
+    # fallback macro only when the symbol is absent from the installed headers.
+    _driver_types = os.path.join(_CUDA_INC, "driver_types.h")
+    _has_preferred_cluster = (
+        os.path.isfile(_driver_types)
+        and "cudaLaunchAttributePreferredClusterDimension" in open(_driver_types).read()
+    )
+    _preferred_cluster_flag = [] if _has_preferred_cluster else [
+        "-DcudaLaunchAttributePreferredClusterDimension=cudaLaunchAttributeClusterDimension"
+    ]
+
     _module = load(
         name="fma_tk",
         sources=[src],
@@ -80,7 +93,7 @@ def _get_module():
             "-DKITTENS_AMPERE",
             "--use_fast_math",
             "-DTORCH_COMPILE",
-        ] + pip_nvidia_incs,
+        ] + _preferred_cluster_flag + pip_nvidia_incs,
         extra_ldflags=_cuda_ldflags,
         verbose=False,
     )

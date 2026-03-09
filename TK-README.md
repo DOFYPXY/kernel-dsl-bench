@@ -38,23 +38,43 @@ Adjust the clone path if you prefer a different location; update `TK_ROOT` accor
 ### 2. Create Conda Environment
 
 ```bash
+# (One-time) Install the libmamba SAT solver — vastly faster than conda's classic solver,
+# especially for large channels like nvidia and conda-forge.
+conda install -n base conda-libmamba-solver
+conda config --set solver libmamba
+```
+
+```bash
 conda create -n tk_env python=3.10
 conda activate tk_env
 
 # Install CUDA 12.4 compiler and runtime only.
-# Do NOT install cuda-toolkit — it pulls in 13.x CCCL headers that conflict with nvcc 12.4.
-conda install -c nvidia "cuda-nvcc=12.4" "cuda-cudart=12.4" "cuda-cudart-dev=12.4"
+# --override-channels + -c nvidia restricts the solve to the nvidia channel,
+# preventing conda from mixing in conda-forge package versions for CUDA deps.
+# Do NOT add cuda-toolkit — it drags in cuda-cccl 13.x headers that conflict
+# with nvcc 12.4 (see note below).
+conda install --override-channels -c nvidia \
+    "cuda-nvcc=12.4" "cuda-cudart=12.4" "cuda-cudart-dev=12.4" "cuda-cccl=12.4"
 
 # Install Python packages (pinned versions in requirements.txt)
 pip install -r requirements.txt --extra-index-url https://download.pytorch.org/whl/cu118
 ```
 
-> **Why not `cuda-toolkit`?** `cuda-toolkit=12.4` resolves several of its dependencies
-> from the latest available channel versions, which installs `cuda-cccl_linux-64 13.x`
-> alongside nvcc 12.4. If those 13.x CCCL headers are placed on the compiler include path
-> they trigger a hard error: _"CUDA compiler and CUDA toolkit headers are incompatible"_.
-> The `*_tk.py` JIT loaders have already been patched to avoid this include path, but
-> installing only `cuda-nvcc` + `cuda-cudart` keeps the environment clean from the start.
+> **Why libmamba?** conda's classic solver has to explore the full cross-product of all
+> package versions across every configured channel. With just `conda-forge` + `nvidia`
+> the search space is large enough to stall indefinitely when installing CUDA packages.
+> libmamba (C++ SAT solver) solves the same problem in seconds.
+>
+> **Why `--override-channels -c nvidia`?** Without it, conda also searches `conda-forge`
+> for every transitive CUDA dependency. `flexible` channel priority (the default) lets
+> conda-forge packages satisfy nvidia deps, multiplying the combinations the solver must
+> check. `--override-channels` pins the search to exactly one channel for this one step.
+>
+> **Why not `cuda-toolkit`?** `cuda-toolkit=12.4` pulls in `cuda-cccl_linux-64 13.x`
+> as a transitive dependency. Those CCCL 2.x headers are incompatible with nvcc 12.4 and
+> trigger a hard build error: _"CUDA compiler and CUDA toolkit headers are incompatible"_.
+> Pinning `cuda-cccl=12.4` explicitly ensures the version-compatible libcudacxx headers
+> (including `cuda/pipeline`) are installed without the conflicting 13.x packages.
 
 ### 3. Pinning the CUDA Runtime
 

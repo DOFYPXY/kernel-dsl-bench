@@ -14,3 +14,12 @@ rmsnorm,tilelang,0.4464,0.0241,N/A
 multihead_attention,torch,9.3054,0.9692,7.38
 multihead_attention,triton,24.4108,0.0674,2.82
 multihead_attention,tilelang,N/A,N/A,N/A
+fma,tk,0.4008,0.0129,N/A
+matmul,tk,4.5705,0.4441,0.47
+conv2d,tk,0.5700,0.0187,N/A
+rmsnorm,tk,0.1271,0.0182,N/A
+multihead_attention,tk,210.1418,0.4058,0.33
+conv2d,tilelang,0.2673,0.0293,N/A
+multihead_attention,tilelang,2.7042,0.3139,25.41
+
+

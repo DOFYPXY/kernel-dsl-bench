@@ -205,7 +205,7 @@ def main():
         ("multihead_attention", ["--batch", "16", "--heads", "16", "--seq", "1024", "--head-dim", "64", "--dtype", "fp16"]),
     ]
     
-    # implementations = ["torch", "triton", "tk", "tilelang"]
+    # implementations = ["torch", "triton", "tilelang"]
     implementations = ["tk"]  
     
     # Store results: results[kernel][impl] = BenchmarkResult

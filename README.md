@@ -11,22 +11,14 @@ Comparing GPU kernel implementations across PyTorch, Triton, JAX, and ThunderKit
 ### 1. Fused Multiply-Add (FMA)
 `y = x * a + b` - Element-wise operation
 
-Directory: `fma/`
-
 ### 2. Matrix Multiplication (MatMul)
 `C = A @ B` - General matrix multiplication
-
-Directory: `matmul/`
 
 ### 3. Root Mean Square Normalization (RMSNorm)
 `y = x / sqrt(mean(x^2) + eps)` - Normalization operation
 
-Directory: `rmsnorm/`
-
 ### 4. Multihead Attention
 Scaled dot-product attention over multiple heads.
-
-Directory: `multihead_attention/`
 
 ## Setup
 
@@ -34,11 +26,46 @@ Directory: `multihead_attention/`
 # Create virtual environment
 python3 -m venv venv
 source venv/bin/activate
-
 # Install dependencies
-pip install -e .              # PyTorch + Triton
-pip install -e ".[jax]"       # Add JAX support
+pip install -e .              # Only for PyTorch + Triton + Tilelang
 ```
+
+## Generate Final Data
+
+### Notes
+Manually switch the implementation in `benchmark_all.py`, `matmul/size_sweep.py`, and `rmsnorm/size_sweep.py`:
+```python
+    # implementations = ["torch", "triton", "tilelang"]
+    implementations = ["tk"]  
+```
+The Tilelang kernels of Conv2D and MHA do not support FP32. Manually set `--dtype 16` in default parameters in `benchmark_all.py`.
+
+
+### Comparison over fixed parameters
+```bash
+python benchmark_all.py
+python benchmark_all.py -o results/
+# Visualization
+python scripts/visualize.py results/time.csv 
+```
+
+### Size sweep (for Matmul + RMSNorm)
+
+Matmul
+```bash
+# Run
+python matmul/size_sweep.py --num-sizes 16 --min-size 128 --step-size 128 -o results/matmul_size/ 
+# Visualization
+python scripts/matmul_size_curves.py results/matmul_size/time.csv
+```
+RMSNorm
+```bash
+# Run
+python rmsnorm/size_sweep.py --min-hidden 128 --step-size 128 --num-sizes 16 -o results/rmsnorm_size
+# Visualization
+python scripts/rmsnorm_size_curves.py results/rmsnorm_size/time.csv
+```
+
 
 ## Running Benchmarks
 

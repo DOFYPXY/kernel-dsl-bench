@@ -136,8 +136,8 @@ def main() -> None:
     if args.min_size <= 0 or args.step_size <= 0 or args.num_sizes <= 0:
         raise ValueError("Size parameters must be positive")
 
-    implementations = ["torch", "triton", "tilelang"]
-    # implementations = ["tk"]
+    # implementations = ["torch", "triton", "tilelang"]
+    implementations = ["tk"]
     
     sizes = linear_sizes(args.min_size, args.step_size, args.num_sizes)
     os.makedirs(args.output_dir, exist_ok=True)
@@ -179,10 +179,10 @@ def main() -> None:
               f"{row['mean_ms']:>10} {row['stddev_ms']:>10} "
               f"{row['tflops']:>8} {row['status']:<10}")
 
-    save_times_csv(os.path.join(args.output_dir, "time.csv"), rows)
-    save_parameters(os.path.join(args.output_dir, "param.txt"), implementations, sizes,
+    save_times_csv(os.path.join(args.output_dir, "time_tk.csv"), rows)
+    save_parameters(os.path.join(args.output_dir, "param_tk.txt"), implementations, sizes,
                     args.warmup, args.iters, args.seed)
-    print(f"\nSaved to: {args.output_dir}/time.csv and {args.output_dir}/param.txt")
+    print(f"\nSaved to: {args.output_dir}/time_tk.csv and {args.output_dir}/param_tk.txt")
 
 
 if __name__ == "__main__":

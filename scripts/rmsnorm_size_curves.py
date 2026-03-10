@@ -114,7 +114,13 @@ def main():
 	parser.add_argument(
 		"csv_path",
 		nargs="?",
-		help="Path to rmsnorm benchmark CSV",
+		help="Path to rmsnorm benchmark CSV (torch/triton/tilelang results)",
+	)
+	parser.add_argument(
+		"--tk-csv",
+		default=None,
+		metavar="TK_CSV",
+		help="Optional second CSV with TK results to overlay on the same plot",
 	)
 	parser.add_argument(
 		"--output-dir",
@@ -132,6 +138,13 @@ def main():
 		raise FileNotFoundError(f"CSV file not found: {args.csv_path}")
 
 	data = load_rmsnorm_results(args.csv_path)
+
+	if args.tk_csv:
+		if not os.path.exists(args.tk_csv):
+			raise FileNotFoundError(f"TK CSV file not found: {args.tk_csv}")
+		tk_data = load_rmsnorm_results(args.tk_csv)
+		data.update(tk_data)
+
 	plot_size_curves(data, args.output_dir, args.show)
 
 

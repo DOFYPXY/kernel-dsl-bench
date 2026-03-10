@@ -21,7 +21,14 @@ from common import print_gpu_info, benchmark, verify_correctness, get_dtype, add
 from conv2d_torch import torch_conv2d
 from conv2d_triton import triton_conv2d_3x3_s1p1
 from conv2d_tk import tk_conv2d
-from conv2d_tilelang import tilelang_conv2d
+
+try:
+    from conv2d_tilelang import tilelang_conv2d
+    TILELANG_AVAILABLE = True
+except (ImportError, AttributeError) as e:
+    TILELANG_AVAILABLE = False
+    tilelang_conv2d = None
+    print(f"Warning: Tilelang not available ({type(e).__name__}: {e})", file=sys.stderr)
 
 
 def main():

@@ -18,7 +18,14 @@ from common import add_common_args, benchmark, get_dtype, print_gpu_info, verify
 from multihead_attention_torch import torch_multihead_attention
 from multihead_attention_triton import triton_multihead_attention
 from multihead_attention_tk import tk_multihead_attention
-from multihead_attention_tilelang import tilelang_multihead_attention
+
+try:
+    from multihead_attention_tilelang import tilelang_multihead_attention
+    TILELANG_AVAILABLE = True
+except (ImportError, AttributeError) as e:
+    TILELANG_AVAILABLE = False
+    tilelang_multihead_attention = None
+    print(f"Warning: Tilelang not available ({type(e).__name__}: {e})", file=sys.stderr)
 
 
 def main():

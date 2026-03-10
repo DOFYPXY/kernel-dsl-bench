@@ -105,17 +105,18 @@ def _get_module():
 
 def tk_matmul(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
     """
-    ThunderKittens MatMul: C = A @ B  (fp32, CUDA).
+    ThunderKittens MatMul: C = A @ B  (fp16, CUDA).
 
     Args:
-        a: 2-D float32 CUDA tensor of shape (M, K)
-        b: 2-D float32 CUDA tensor of shape (K, N)
+        a: 2-D float16 CUDA tensor of shape (M, K)
+        b: 2-D float16 CUDA tensor of shape (K, N)
 
     Returns:
-        2-D float32 tensor of shape (M, N)
+        2-D float16 tensor of shape (M, N)
     """
     assert a.is_cuda and b.is_cuda, "Inputs must be on CUDA device"
     assert a.is_contiguous() and b.is_contiguous(), "Inputs must be contiguous"
+    assert a.dtype == torch.float16 and b.dtype == torch.float16, "Inputs must be float16"
     assert a.shape[1] == b.shape[0], "Incompatible dimensions"
 
     return _get_module().matmul(a, b)

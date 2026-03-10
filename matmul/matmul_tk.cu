@@ -33,61 +33,88 @@
  */
 
 #include <algorithm>          // std::copy_n needed by TK's LaunchConfig
+#include <cuda_fp16.h>
 #include "kittens.cuh"
 using namespace kittens;
 
-static constexpr int BLOCK_SIZE  = 32;
+// BLOCK_SIZE = 64 matches Triton (BLOCK_SIZE_M/N=64) and TileLang (block_M/N=64).
+// 1 warp = 32 threads; each thread owns 2 output columns (tx and tx+32).
+static constexpr int BLOCK_SIZE  = 64;
 static constexpr int NUM_THREADS = WARP_THREADS;  // 32
 
 struct matmul_globals {
-    using gl_t = gl<float, 1, 1, -1, -1>;
-    gl_t A, B, C;
+    __half* A;   // (M, K) row-major fp16
+    __half* B;   // (K, N) row-major fp16
+    __half* C;   // (M, N) row-major fp16
     int M, N, K;
 };
 
 __global__ void matmul_kernel(const __grid_constant__ matmul_globals g) {
     extern __shared__ alignment_dummy __shm[];
-    shared_allocator al((int*)&__shm[0]);
-    auto &As = al.allocate<st_fl<BLOCK_SIZE, BLOCK_SIZE>>();
-    auto &Bs = al.allocate<st_fl<BLOCK_SIZE, BLOCK_SIZE>>();
-    auto &Cs = al.allocate<st_fl<BLOCK_SIZE, BLOCK_SIZE>>();
+    // Two fp16 shared-memory tiles: As[BLOCK×BLOCK] and Bs[BLOCK×BLOCK]
+    __half* As = reinterpret_cast<__half*>(&__shm[0]);
+    __half* Bs = As + BLOCK_SIZE * BLOCK_SIZE;
 
-    int tx = kittens::laneid();  // 0..31: thread handles output column tx
+    const int tx = kittens::laneid();   // 0..31
+    const int bx = (int)blockIdx.x;    // N-tile index
+    const int by = (int)blockIdx.y;    // M-tile index
 
-    // Each thread accumulates BLOCK_SIZE output values
-    float acc[BLOCK_SIZE];
+    // fp32 accumulators for two output columns per thread:
+    //   col0 = bx*BLOCK_SIZE + tx,  col1 = bx*BLOCK_SIZE + tx+32
+    float acc0[BLOCK_SIZE], acc1[BLOCK_SIZE];
     #pragma unroll
-    for (int i = 0; i < BLOCK_SIZE; i++) acc[i] = 0.0f;
+    for (int i = 0; i < BLOCK_SIZE; i++) acc0[i] = acc1[i] = 0.0f;
 
-    int num_k_tiles = (g.K + BLOCK_SIZE - 1) / BLOCK_SIZE;
+    const int num_k_tiles = (g.K + BLOCK_SIZE - 1) / BLOCK_SIZE;
 
     for (int k = 0; k < num_k_tiles; k++) {
-        // Load A[ blockIdx.y, k ] and B[ k, blockIdx.x ] from HBM → shared
-        kittens::warp::load(As, g.A, {0, 0, (int)blockIdx.y, k});
-        kittens::warp::load(Bs, g.B, {0, 0, k, (int)blockIdx.x});
+        // Load A tile: 4096 fp16 elements / 32 threads = 128 per thread
+        for (int elem = tx; elem < BLOCK_SIZE * BLOCK_SIZE; elem += NUM_THREADS) {
+            const int row  = elem / BLOCK_SIZE;
+            const int col  = elem % BLOCK_SIZE;
+            const int m_abs = by * BLOCK_SIZE + row;
+            const int k_abs = k  * BLOCK_SIZE + col;
+            As[elem] = (m_abs < g.M && k_abs < g.K)
+                ? g.A[m_abs * g.K + k_abs] : __float2half(0.0f);
+        }
+        // Load B tile: 4096 fp16 elements / 32 threads = 128 per thread
+        for (int elem = tx; elem < BLOCK_SIZE * BLOCK_SIZE; elem += NUM_THREADS) {
+            const int row  = elem / BLOCK_SIZE;
+            const int col  = elem % BLOCK_SIZE;
+            const int k_abs = k  * BLOCK_SIZE + row;
+            const int n_abs = bx * BLOCK_SIZE + col;
+            Bs[elem] = (k_abs < g.K && n_abs < g.N)
+                ? g.B[k_abs * g.N + n_abs] : __float2half(0.0f);
+        }
         __syncthreads();
 
-        // Inner product: each thread owns one output column (tx)
-        //   acc[i] = sum_kk  A[i, kk] * B[kk, tx]
-        #pragma unroll 8
+        // Inner product with fp32 accumulation:
+        //   acc0[i] += sum_kk A[i,kk] * B[kk, tx   ]
+        //   acc1[i] += sum_kk A[i,kk] * B[kk, tx+32]
+        #pragma unroll 4
         for (int i = 0; i < BLOCK_SIZE; i++) {
-            #pragma unroll 8
+            #pragma unroll 4
             for (int kk = 0; kk < BLOCK_SIZE; kk++) {
-                acc[i] += As[{i, kk}] * Bs[{kk, tx}];
+                const float a_val = __half2float(As[i * BLOCK_SIZE + kk]);
+                acc0[i] += a_val * __half2float(Bs[kk * BLOCK_SIZE + tx     ]);
+                acc1[i] += a_val * __half2float(Bs[kk * BLOCK_SIZE + tx + 32]);
             }
         }
         __syncthreads();
     }
 
-    // Write per-thread accumulator into shared output tile
+    // Write fp16 output directly to global memory
+    const int m_base = by * BLOCK_SIZE;
+    const int n_base = bx * BLOCK_SIZE;
     #pragma unroll
     for (int i = 0; i < BLOCK_SIZE; i++) {
-        Cs[{i, tx}] = acc[i];
+        const int m_abs = m_base + i;
+        if (m_abs >= g.M) continue;
+        const int n0 = n_base + tx;
+        const int n1 = n_base + tx + 32;
+        if (n0 < g.N) g.C[m_abs * g.N + n0] = __float2half_rn(acc0[i]);
+        if (n1 < g.N) g.C[m_abs * g.N + n1] = __float2half_rn(acc1[i]);
     }
-    __syncthreads();
-
-    // Shared → Global
-    kittens::warp::store(g.C, Cs, {0, 0, (int)blockIdx.y, (int)blockIdx.x});
 }
 
 // ─── PyTorch / Python binding ────────────────────────────────────────────────
@@ -99,8 +126,8 @@ torch::Tensor tk_matmul(const torch::Tensor& a, const torch::Tensor& b) {
                 "Both matrices must be on CUDA");
     TORCH_CHECK(a.is_contiguous() && b.is_contiguous(),
                 "Both matrices must be contiguous");
-    TORCH_CHECK(a.dtype() == torch::kFloat32 && b.dtype() == torch::kFloat32,
-                "Inputs must be float32");
+    TORCH_CHECK(a.dtype() == torch::kFloat16 && b.dtype() == torch::kFloat16,
+                "Inputs must be float16");
     TORCH_CHECK(a.dim() == 2 && b.dim() == 2,
                 "Inputs must be 2-D");
     TORCH_CHECK(a.size(1) == b.size(0),
@@ -125,14 +152,15 @@ torch::Tensor tk_matmul(const torch::Tensor& a, const torch::Tensor& b) {
     torch::Tensor b_p = pad_tensor(b, K_p, N_p);
     torch::Tensor c_p = torch::zeros({M_p, N_p}, a.options());
 
-    using gl_t = matmul_globals::gl_t;
-    gl_t a_gl{(float*)a_p.data_ptr(), nullptr, nullptr, (size_t)M_p, (size_t)K_p};
-    gl_t b_gl{(float*)b_p.data_ptr(), nullptr, nullptr, (size_t)K_p, (size_t)N_p};
-    gl_t c_gl{(float*)c_p.data_ptr(), nullptr, nullptr, (size_t)M_p, (size_t)N_p};
-    matmul_globals g{a_gl, b_gl, c_gl, M_p, N_p, K_p};
+    matmul_globals g;
+    g.A = (__half*)a_p.data_ptr();
+    g.B = (__half*)b_p.data_ptr();
+    g.C = (__half*)c_p.data_ptr();
+    g.M = M_p; g.N = N_p; g.K = K_p;
 
     dim3 grid(N_p / BLOCK_SIZE, M_p / BLOCK_SIZE);
-    size_t smem = 3 * sizeof(st_fl<BLOCK_SIZE, BLOCK_SIZE>);
+    // Two fp16 tiles of BLOCK_SIZE×BLOCK_SIZE
+    size_t smem = 2 * BLOCK_SIZE * BLOCK_SIZE * sizeof(__half);
 
     cudaFuncSetAttribute(
         matmul_kernel,

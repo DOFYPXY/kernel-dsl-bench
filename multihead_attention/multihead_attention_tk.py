@@ -111,14 +111,21 @@ def tk_multihead_attention(
     ThunderKittens multihead attention: Out = softmax(QK^T / sqrt(D)) * V.
 
     Args:
-        q: (B, H, S, D) float32 CUDA tensor, D ≤ 64
-        k: (B, H, S, D) float32 CUDA tensor
-        v: (B, H, S, D) float32 CUDA tensor
+        q: (B, H, S, D) CUDA tensor, D ≤ 64
+        k: (B, H, S, D) CUDA tensor
+        v: (B, H, S, D) CUDA tensor
         causal: whether to apply causal masking (currently unsupported)
 
     Returns:
-        (B, H, S, D) float32 CUDA tensor
+        (B, H, S, D) CUDA tensor (same dtype as input)
     """
+    # Cast to fp16 to align with TileLang and Triton (Issue-2)
+    orig_dtype = q.dtype
+    if orig_dtype != torch.float16:
+        q = q.to(torch.float16)
+        k = k.to(torch.float16)
+        v = v.to(torch.float16)
+
     q = q.contiguous()
     k = k.contiguous()
     v = v.contiguous()
@@ -129,4 +136,7 @@ def tk_multihead_attention(
     D = q.shape[-1]
     scale = 1.0 / math.sqrt(D)
 
-    return _get_module().mha_fwd(q, k, v, scale)
+    out = _get_module().mha_fwd(q, k, v, scale)
+    if orig_dtype != torch.float16:
+        out = out.to(orig_dtype)
+    return out

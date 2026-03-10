@@ -81,10 +81,7 @@ def main():
     torch.manual_seed(args.seed)
     torch.cuda.manual_seed(args.seed)
     
-    # Determine data type (TK MatMul kernel requires fp32)
-    if args.impl == "tk" and args.dtype != "fp32":
-        print(f"Note: TK MatMul kernel requires fp32; overriding dtype from {args.dtype} to fp32.")
-        args.dtype = "fp32"
+    # All implementations now run fp16; set default if user did not specify
     dtype = get_dtype(args.dtype)
 
     # Allocate test matrices

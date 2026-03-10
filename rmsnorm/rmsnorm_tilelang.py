@@ -82,17 +82,13 @@ def tilelang_rmsnorm_kernel(
             if tk == 0:
                 smem[1] = T.sqrt(smem[0] / T.float32(hidden) + T.float32(eps))
 
-            # Second pass: normalize + scale
-            # Need smem[1] to be visible — use another atomic_add on a dummy
-            # slot as a barrier proxy, OR rely on the fact that TileLang's
-            # ThreadStorageSync pass inserts barriers around shared writes.
-            # Safest: do a no-op atomic_add so the pass inserts a sync.
-            T.atomic_add(smem[0], T.float32(0))   # barrier proxy
-
+            # Second pass: re-read x from global memory
+            # (aligned with TK rmsnorm which re-issues warp::load in pass 2)
             for i in T.serial(tile_k):
                 col = tk * tile_k + i
                 if col < hidden:
-                    y[row, col] = (x_local[i] / smem[1] * w_local[i]).astype(dtype)
+                    x_val = x[row, col].astype("float32")   # re-read from HBM
+                    y[row, col] = (x_val / smem[1] * w_local[i]).astype(dtype)
 
     return main
 

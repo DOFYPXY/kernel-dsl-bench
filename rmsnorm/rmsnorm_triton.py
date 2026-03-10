@@ -36,8 +36,11 @@ def triton_rmsnorm_kernel(
     rms = tl.sum(x * x, axis=0) / hidden_size
     rms = tl.sqrt(rms + eps)
 
+    # Pass 2: reload x from global memory (aligned with TK which re-reads from HBM)
+    x2 = tl.load(x_ptr + offsets, mask=mask).to(tl.float32)
+
     # Normalize
-    x_norm = x / rms
+    x_norm = x2 / rms
 
     # Load weight (broadcast)
     w = tl.load(w_ptr + tl.arange(0, BLOCK_SIZE), mask=mask).to(tl.float32)

@@ -15,7 +15,7 @@ if os.path.isdir(cuda_bin) and cuda_bin not in os.environ.get("PATH", ""):
 _kernel_cache: dict = {}
 
 
-def tilelang_matmul_kernel(M, N, K, block_M=128, block_N=128, block_K=32,
+def tilelang_matmul_kernel(M, N, K, block_M=64, block_N=64, block_K=64,
                             dtype="float16", accum_dtype="float"):
     """
     TileLang kernel: C = A @ B
@@ -71,14 +71,14 @@ def tilelang_matmul(a: torch.Tensor, b: torch.Tensor) -> torch.Tensor:
     M, K = a.shape
     K, N = b.shape
 
-    BLOCK_M = 128
-    BLOCK_N = 128
-    BLOCK_K = 32
+    BLOCK_M = 64
+    BLOCK_N = 64
+    BLOCK_K = 64
 
     cache_key = (M, N, K, BLOCK_M, BLOCK_N, BLOCK_K)
     if cache_key not in _kernel_cache:
         program = tilelang_matmul_kernel(M, N, K,
-                                          block_M=BLOCK_M, block_N=BLOCK_N, block_K=BLOCK_K)
+                                         block_M=BLOCK_M, block_N=BLOCK_N, block_K=BLOCK_K)
         rt_mod, params = tilelang.lower(program)
         _kernel_cache[cache_key] = Profiler(rt_mod, params, result_idx=[2])
 

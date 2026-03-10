@@ -145,8 +145,8 @@ def _compile_flash_attn(batch_heads, seq_len, head_dim, is_causal):
     if key in _kernel_cache:
         return _kernel_cache[key]
 
-    block_M = 64
-    block_N = 64
+    block_M = 32
+    block_N = 32
 
     program = _make_flash_attn_program(
         batch_heads, seq_len, head_dim,
@@ -155,8 +155,6 @@ def _compile_flash_attn(batch_heads, seq_len, head_dim, is_causal):
         dtype="float16",
         accum_dtype="float",
     )
-
-    # v0.1.0: out_idx=[3] → 4th buffer (O_flat) is the output
     mod, params = tilelang.lower(program)
     kernel = tilelang.Profiler(mod, params, [3], tilelang.TensorSupplyType.Integer)
 
@@ -182,9 +180,10 @@ def tilelang_multihead_attention(q, k, v, causal=False):
     BH = B * H
 
     # Flatten to 2D: (BH * S, D) — avoids 3D buffer issues in v0.1.0
-    q_fp16 = q.reshape(BH * S, D).contiguous()
-    k_fp16 = k.reshape(BH * S, D).contiguous()
-    v_fp16 = v.reshape(BH * S, D).contiguous()
+    # Cast to fp16 to align with TK and Triton (Issue-2)
+    q_fp16 = q.reshape(BH * S, D).to(torch.float16).contiguous()
+    k_fp16 = k.reshape(BH * S, D).to(torch.float16).contiguous()
+    v_fp16 = v.reshape(BH * S, D).to(torch.float16).contiguous()
 
     kernel = _compile_flash_attn(BH, S, D, causal)
     output = kernel(q_fp16, k_fp16, v_fp16)

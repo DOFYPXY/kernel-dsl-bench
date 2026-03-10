@@ -45,6 +45,7 @@
  */
 
 #include <algorithm>  // std::copy_n
+#include <cuda_fp16.h>
 #include "kittens.cuh"
 using namespace kittens;
 
@@ -53,16 +54,16 @@ static constexpr int MHA_BLOCK_D  = 64;   // head-dim tile dimension (must ≡ B
 static constexpr int NUM_THREADS   = WARP_THREADS;  // 32
 
 struct mha_globals {
-    // Q, K, V, Out: (B, H, S, D) row-major
-    float* Q;
-    float* K;
-    float* V;
-    float* Out;
+    // Q, K, V, Out: (B, H, S, D) row-major  fp16
+    __half* Q;
+    __half* K;
+    __half* V;
+    __half* Out;
 
     int B, H, S, D;
     float scale;
 
-    // Strides
+    // Strides (in elements)
     int stride_B, stride_H, stride_S, stride_D;
 };
 
@@ -74,9 +75,9 @@ __global__ void mha_fwd_kernel(const __grid_constant__ mha_globals g) {
 
     extern __shared__ alignment_dummy __shm[];
     shared_allocator al((int*)&__shm[0]);
-    // Two tiles: one for Q (kept), one for K/V (reused per kv_tile)
-    auto &Q_s = al.allocate<st_fl<MHA_BLOCK_S, MHA_BLOCK_D>>();
-    auto &KV_s = al.allocate<st_fl<MHA_BLOCK_S, MHA_BLOCK_D>>();
+    // Two fp16 shared tiles for Q (kept) and K/V (reused per kv_tile)
+    auto &Q_s  = al.allocate<st_hf<MHA_BLOCK_S, MHA_BLOCK_D>>();
+    auto &KV_s = al.allocate<st_hf<MHA_BLOCK_S, MHA_BLOCK_D>>();
 
     const int base_offset = (batch * g.stride_B + head * g.stride_H);
     const int q_start     = q_tile * MHA_BLOCK_S;
@@ -90,18 +91,15 @@ __global__ void mha_fwd_kernel(const __grid_constant__ mha_globals g) {
     // Manual load: 32 threads × 2 elements per thread = 64 floats per D row
     // For BLOCK_S=32 rows × BLOCK_D=64 cols = 2048 floats → each thread: 64 floats
     {
-        float* q_ptr = g.Q + base_offset + q_start * g.stride_S;
-        // 32 threads load 32×64 = 2048 floats: thread t loads row t (BLOCK_S=32=WARP_THREADS)
-        // The shared tile st_fl uses a swizzled layout; access via operator{row, col}
+        __half* q_ptr = g.Q + base_offset + q_start * g.stride_S;
         for (int d = 0; d < MHA_BLOCK_D; d += NUM_THREADS) {
             int d_idx = d + lane;
             if (d_idx < MHA_BLOCK_D) {
-                // Load BLOCK_S rows, d_idx-th column
                 for (int row = 0; row < MHA_BLOCK_S; row++) {
                     int s_abs = q_start + row;
                     Q_s[{row, d_idx}] = (s_abs < g.S && d_idx < g.D)
                         ? q_ptr[row * g.stride_S + d_idx * g.stride_D]
-                        : 0.0f;
+                        : __float2half(0.0f);
                 }
             }
         }
@@ -114,8 +112,8 @@ __global__ void mha_fwd_kernel(const __grid_constant__ mha_globals g) {
     float Q_reg[MHA_BLOCK_S * 2];  // Q_reg[row*2 + col_sub]  col = lane*2 + col_sub
     #pragma unroll
     for (int row = 0; row < MHA_BLOCK_S; row++) {
-        Q_reg[row * 2    ] = Q_s[{row, lane * 2    }];
-        Q_reg[row * 2 + 1] = Q_s[{row, lane * 2 + 1}];
+        Q_reg[row * 2    ] = __half2float(Q_s[{row, lane * 2    }]);
+        Q_reg[row * 2 + 1] = __half2float(Q_s[{row, lane * 2 + 1}]);
     }
 
     // Online softmax accumulators: per row (BLOCK_S rows)
@@ -136,7 +134,7 @@ __global__ void mha_fwd_kernel(const __grid_constant__ mha_globals g) {
     // ── Flash Attention loop over K/V tiles ──────────────────────────────────
     for (int kv_tile = 0; kv_tile < num_kv_tiles; kv_tile++) {
         const int kv_start = kv_tile * MHA_BLOCK_S;
-        float* k_ptr = g.K + base_offset + kv_start * g.stride_S;
+        __half* k_ptr = g.K + base_offset + kv_start * g.stride_S;
 
         // Load K tile into KV_s
         #pragma unroll
@@ -147,7 +145,7 @@ __global__ void mha_fwd_kernel(const __grid_constant__ mha_globals g) {
                     int s_abs = kv_start + row;
                     KV_s[{row, d_idx}] = (s_abs < g.S && d_idx < g.D)
                         ? k_ptr[row * g.stride_S + d_idx * g.stride_D]
-                        : 0.0f;
+                        : __float2half(0.0f);
                 }
             }
         }
@@ -174,7 +172,7 @@ __global__ void mha_fwd_kernel(const __grid_constant__ mha_globals g) {
             dot = 0.0f;
             for (int d_idx = 0; d_idx < MHA_BLOCK_D; d_idx++) {
                 // Q[row, d_idx] needs to come from Q_s (shared) since Q_reg only has our 2 cols
-                dot += Q_s[{row, d_idx}] * KV_s[{lane, d_idx}];
+            dot += __half2float(Q_s[{row, d_idx}]) * __half2float(KV_s[{lane, d_idx}]);
             }
             S_col[row] = dot * g.scale;
             // Mask out-of-bounds kv positions
@@ -231,19 +229,19 @@ __global__ void mha_fwd_kernel(const __grid_constant__ mha_globals g) {
         // Lane `lane` owns column `lane` of P: P[row, lane] = P_col[row]
         #pragma unroll
         for (int row = 0; row < MHA_BLOCK_S; row++) {
-            KV_s[{row, lane}] = P_col[row];
+            KV_s[{row, lane}] = __float2half_rn(P_col[row]);
         }
-        // Fill rest of columns (lane=32..63 out of range: BLOCK_D=64 but only BLOCK_S=32 cols needed)
+        // Fill columns [32..63] of the tile with 0 (unused; tile is BLOCK_D=64 wide)
         if (lane + NUM_THREADS < MHA_BLOCK_D) {
             #pragma unroll
             for (int row = 0; row < MHA_BLOCK_S; row++) {
-                KV_s[{row, lane + NUM_THREADS}] = 0.0f;
+                KV_s[{row, lane + NUM_THREADS}] = __float2half(0.0f);
             }
         }
         __syncthreads();
 
-        // Load V tile
-        float* v_ptr = g.V + base_offset + kv_start * g.stride_S;
+        // Load V tile into Q_s (reusing Q_s; Q values are in Q_reg)
+        __half* v_ptr = g.V + base_offset + kv_start * g.stride_S;
         // Reuse Q_s for V (Q_reg holds Q values so Q_s can be clobbered)
         #pragma unroll
         for (int d = 0; d < MHA_BLOCK_D; d += NUM_THREADS) {
@@ -253,7 +251,7 @@ __global__ void mha_fwd_kernel(const __grid_constant__ mha_globals g) {
                     int s_abs = kv_start + row;
                     Q_s[{row, d_idx}] = (s_abs < g.S && d_idx < g.D)
                         ? v_ptr[row * g.stride_S + d_idx * g.stride_D]
-                        : 0.0f;
+                        : __float2half(0.0f);
                 }
             }
         }
@@ -267,9 +265,9 @@ __global__ void mha_fwd_kernel(const __grid_constant__ mha_globals g) {
             float pv0 = 0.0f, pv1 = 0.0f;
             #pragma unroll
             for (int j = 0; j < MHA_BLOCK_S; j++) {
-                float p = KV_s[{row, j}];
-                pv0 += p * Q_s[{j, lane * 2    }];
-                pv1 += p * Q_s[{j, lane * 2 + 1}];
+                float p = __half2float(KV_s[{row, j}]);
+                pv0 += p * __half2float(Q_s[{j, lane * 2    }]);
+                pv1 += p * __half2float(Q_s[{j, lane * 2 + 1}]);
             }
             acc[row * 2    ] += pv0;
             acc[row * 2 + 1] += pv1;
@@ -287,14 +285,14 @@ __global__ void mha_fwd_kernel(const __grid_constant__ mha_globals g) {
         // Restore Q_s from Q_reg (needed for next iteration's QK^T computation)
         #pragma unroll
         for (int row = 0; row < MHA_BLOCK_S; row++) {
-            Q_s[{row, lane * 2    }] = Q_reg[row * 2    ];
-            Q_s[{row, lane * 2 + 1}] = Q_reg[row * 2 + 1];
+            Q_s[{row, lane * 2    }] = __float2half_rn(Q_reg[row * 2    ]);
+            Q_s[{row, lane * 2 + 1}] = __float2half_rn(Q_reg[row * 2 + 1]);
         }
         __syncthreads();
     }
 
     // ── Normalize and store output ─────────────────────────────────────────────
-    float* out_ptr = g.Out + base_offset + q_start * g.stride_S;
+    __half* out_ptr = g.Out + base_offset + q_start * g.stride_S;
     #pragma unroll
     for (int row = 0; row < MHA_BLOCK_S; row++) {
         int s_abs = q_start + row;
@@ -308,7 +306,7 @@ __global__ void mha_fwd_kernel(const __grid_constant__ mha_globals g) {
             int d_abs = lane * 2 + col_sub;
             if (d_abs < g.D) {
                 out_ptr[row * g.stride_S + d_abs * g.stride_D] =
-                    acc[row * 2 + col_sub] * inv_l;
+                    __float2half_rn(acc[row * 2 + col_sub] * inv_l);
             }
         }
     }
@@ -328,7 +326,7 @@ torch::Tensor tk_mha_fwd(
     TORCH_CHECK(Q.is_cuda() && K.is_cuda() && V.is_cuda(), "Inputs must be on CUDA");
     TORCH_CHECK(Q.is_contiguous() && K.is_contiguous() && V.is_contiguous(),
                 "Inputs must be contiguous");
-    TORCH_CHECK(Q.dtype() == torch::kFloat32, "Inputs must be float32");
+    TORCH_CHECK(Q.dtype() == torch::kFloat16, "Inputs must be float16");
     TORCH_CHECK(Q.dim() == 4, "Q must be (B, H, S, D)");
     TORCH_CHECK(Q.sizes() == K.sizes() && Q.sizes() == V.sizes(),
                 "Q, K, V must have the same shape");
@@ -343,10 +341,10 @@ torch::Tensor tk_mha_fwd(
     torch::Tensor Out = torch::empty_like(Q);
 
     mha_globals g;
-    g.Q   = (float*)Q.data_ptr();
-    g.K   = (float*)K.data_ptr();
-    g.V   = (float*)V.data_ptr();
-    g.Out = (float*)Out.data_ptr();
+    g.Q   = (__half*)Q.data_ptr();
+    g.K   = (__half*)K.data_ptr();
+    g.V   = (__half*)V.data_ptr();
+    g.Out = (__half*)Out.data_ptr();
     g.B = B; g.H = H; g.S = S; g.D = D;
     g.scale = scale;
     // Strides (Q, K, V, Out all share same layout)
@@ -358,8 +356,8 @@ torch::Tensor tk_mha_fwd(
     int q_tiles = (S + MHA_BLOCK_S - 1) / MHA_BLOCK_S;
     dim3 grid(q_tiles, H, B);
 
-    // Shared: Q_s + KV_s = 2 × st_fl<BLOCK_S, BLOCK_D>
-    size_t smem = 2 * sizeof(st_fl<MHA_BLOCK_S, MHA_BLOCK_D>);
+    // Shared: Q_s + KV_s = 2 × st_hf<BLOCK_S, BLOCK_D>
+    size_t smem = 2 * sizeof(st_hf<MHA_BLOCK_S, MHA_BLOCK_D>);
     cudaFuncSetAttribute(mha_fwd_kernel, cudaFuncAttributeMaxDynamicSharedMemorySize,
                          (int)smem);
     mha_fwd_kernel<<<grid, NUM_THREADS, smem>>>(g);

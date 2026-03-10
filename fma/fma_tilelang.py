@@ -40,14 +40,16 @@ def tilelang_fma_kernel(N, a, b, num_per_thread=4, threads=256, dtype="float32")
         x: T.Buffer((N,), dtype),
     ):
         with T.Kernel(T.ceildiv(N, block_size), threads=threads) as bx:
+            x_shared = T.alloc_shared((block_size,), dtype)   # shared-memory stage (Issue-6)
             x_reg = T.alloc_fragment((block_size,), dtype)
             y_reg = T.alloc_fragment((block_size,), dtype)
 
             s_start = bx * block_size
             s_end   = (bx + 1) * block_size
 
-            # Load x tile from global memory into registers (LDG.128)
-            T.copy(x[s_start:s_end], x_reg)
+            # Load x tile: global → shared → registers (matches TK's memory path)
+            T.copy(x[s_start:s_end], x_shared)
+            T.copy(x_shared, x_reg)
 
             # Compute y = x * a + b  (a, b captured from outer Python scope)
             for tid, i in T.Parallel(threads, num_per_thread):

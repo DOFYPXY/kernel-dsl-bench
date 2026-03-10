@@ -1,17 +1,19 @@
 #!/usr/bin/env python3
 """
-Conv2D via implicit im2col + TileLang GEMM.
+Conv2D via direct convolution in TileLang (Issue-3 fix: no im2col to global memory).
 
-Strategy:
-  1. Use torch.nn.functional.unfold (im2col) to rearrange input patches
-     into a 2D matrix of shape (Cin*KH*KW, H_out*W_out).
-  2. Reshape weight to (Cout, Cin*KH*KW).
-  3. Run a TileLang GEMM kernel:  Output = Weight @ Im2col_matrix
-  4. Reshape result back to (N, Cout, H_out, W_out).
+Algorithm mirrors TK's conv2d_tk.cu:
+  - Grid  : (ceildiv(N*H_out*W_out, BLOCK_OHW),  ceildiv(C_out, BLOCK_OC))
+  - Block : 32 threads (1 warp), BLOCK_OHW=64, BLOCK_OC=16
+  - For each (ic, kh, kw):
+      1. Load weight slice w[pid_oc*BLOCK_OC:(pid_oc+1)*BLOCK_OC, ic, kh, kw]
+         into shared memory  (Issue-7: explicit smem caching, matching TK)
+      2. Load input patch  x[n, ic, ih, iw] for each ohw position
+         into shared memory
+      3. Accumulate outer-product into register accumulators
 
-NOTE: TileLang v0.1.0's T.gemm uses CUTLASS tensor core MMA which is
-optimized for fp16 inputs. This implementation now supports multiple data types
-(float32, float16, bfloat16) by reading the dtype from input tensors.
+Shared memory is used for BOTH the weight slice and the input patch,
+matching TK's memory layout exactly.
 
 Designed for TileLang v0.1.0 on sm_75 (T4 / RTX 2080 Ti).
 """
@@ -21,82 +23,130 @@ import tilelang
 import tilelang.language as T
 
 # ---------------------------------------------------------------------------
-# Kernel cache – avoids recompilation across repeated benchmark invocations
+# Kernel cache – avoids recompilation
 # ---------------------------------------------------------------------------
 _kernel_cache: dict = {}
 cuda_bin = "/usr/local/cuda/bin"
 if os.path.isdir(cuda_bin) and cuda_bin not in os.environ.get("PATH", ""):
     os.environ["PATH"] = cuda_bin + ":" + os.environ.get("PATH", "")
 
+# Tile dimensions matching TK's conv2d_tk.cu
+_BLOCK_OC  = 16   # output channels per block
+_BLOCK_OHW = 64   # output spatial positions per block (32 threads × 2 positions)
+_THREADS   = 32   # 1 warp per block
 
-def _make_gemm_program(M, N, K, block_M, block_N, block_K,
-                       dtype="float16", accum_dtype="float"):
-    """
-    Build a TileLang GEMM program:  C[M, N] = A[M, K] @ B[K, N]
 
-    A = reshaped weight   (Cout, Cin*KH*KW)
-    B = im2col matrix     (Cin*KH*KW, H_out*W_out)
-    C = output            (Cout, H_out*W_out)
+def _make_direct_conv_kernel(
+    N, C_in, H, W, C_out, H_out, W_out, pad, stride, dtype="float32"
+):
     """
+    Build a TileLang direct-convolution kernel (3×3, specialised for N=1).
+
+    Memory layout (aligned with TK conv2d_tk.cu):
+      w_smem[BLOCK_OC]   – weight slice for one (ic, kh, kw) across BLOCK_OC output channels
+      x_smem[BLOCK_OHW]  – input values for BLOCK_OHW output positions for one (ic, kh, kw)
+
+    TileLang's ThreadStorageSync pass inserts __syncthreads__ between
+    adjacent T.Parallel blocks that access shared memory, providing the
+    necessary barriers between the smem-write and smem-read phases.
+    """
+    block_oc  = _BLOCK_OC
+    block_ohw = _BLOCK_OHW
+    threads   = _THREADS
+
     @T.prim_func
-    def gemm_kernel(
-        A: T.Buffer((M, K), dtype),
-        B: T.Buffer((K, N), dtype),
-        C: T.Buffer((M, N), dtype),
+    def main(
+        x: T.Buffer((N, C_in, H, W), dtype),
+        w: T.Buffer((C_out, C_in, 3, 3), dtype),
+        y: T.Buffer((N, C_out, H_out, W_out), dtype),
     ):
-        with T.Kernel(T.ceildiv(N, block_N), T.ceildiv(M, block_M),
-                      threads=128) as (bx, by):
-            A_shared = T.alloc_shared((block_M, block_K), dtype)
-            B_shared = T.alloc_shared((block_K, block_N), dtype)
-            C_local  = T.alloc_fragment((block_M, block_N), accum_dtype)
+        with T.Kernel(
+            T.ceildiv(N * H_out * W_out, block_ohw),
+            T.ceildiv(C_out, block_oc),
+            threads=threads,
+        ) as (pid_ohw, pid_oc):
 
-            T.clear(C_local)
+            # ── Shared memory (Issue-7): weight slice + input patch ──────────
+            w_smem = T.alloc_shared((block_oc,),  "float32")
+            x_smem = T.alloc_shared((block_ohw,), "float32")
 
-            for ko in T.Pipelined(T.ceildiv(K, block_K), num_stages=2):
-                T.copy(A[by * block_M, ko * block_K], A_shared)
-                T.copy(B[ko * block_K, bx * block_N], B_shared)
-                T.gemm(A_shared, B_shared, C_local)
+            # ── Register accumulator: thread tid owns positions tid*2, tid*2+1
+            #    across all block_oc output channels  (32 floats per thread)
+            acc = T.alloc_local((block_oc * 2,), "float32")
+            T.clear(acc)
 
-            T.copy(C_local, C[by * block_M, bx * block_N])
+            tid = T.get_thread_binding(0)   # 0..31
 
-    return gemm_kernel
+            total_ohw = N * H_out * W_out
+
+            for ic in T.serial(C_in):
+                for kh in T.serial(3):
+                    for kw in T.serial(3):
+
+                        # ── Step 1: load weight slice into smem ──────────────
+                        # T.Parallel(block_oc) → threads 0..15 each load 1 weight;
+                        # threads 16..31 are idle for this step.
+                        # TileLang inserts __syncthreads__ after T.Parallel.
+                        for oc_local in T.Parallel(block_oc):
+                            oc_abs = pid_oc * block_oc + oc_local
+                            if oc_abs < C_out:
+                                w_smem[oc_local] = w[oc_abs, ic, kh, kw].astype("float32")
+                            else:
+                                w_smem[oc_local] = T.float32(0)
+
+                        # ── Step 2: load input patch into smem ───────────────
+                        # T.Parallel(block_ohw)=64 with 32 threads → 2 loads per thread.
+                        # TileLang inserts __syncthreads__ after T.Parallel.
+                        for ohw_local in T.Parallel(block_ohw):
+                            ohw_abs = pid_ohw * block_ohw + ohw_local
+                            if ohw_abs < total_ohw:
+                                n_idx = ohw_abs // (H_out * W_out)
+                                rem   = ohw_abs - n_idx * (H_out * W_out)
+                                oh    = rem // W_out
+                                ow    = rem - oh * W_out
+                                ih    = oh * stride - pad + kh
+                                iw    = ow * stride - pad + kw
+                                if (ih >= 0) & (ih < H) & (iw >= 0) & (iw < W):
+                                    x_smem[ohw_local] = x[n_idx, ic, ih, iw].astype("float32")
+                                else:
+                                    x_smem[ohw_local] = T.float32(0)
+                            else:
+                                x_smem[ohw_local] = T.float32(0)
+
+                        # ── Step 3: accumulate outer product ─────────────────
+                        # Thread tid reads its two positions from x_smem and
+                        # all BLOCK_OC weights from w_smem (serial → per-thread).
+                        for oc_rel in T.serial(block_oc):
+                            acc[oc_rel * 2    ] += w_smem[oc_rel] * x_smem[tid * 2    ]
+                            acc[oc_rel * 2 + 1] += w_smem[oc_rel] * x_smem[tid * 2 + 1]
+
+            # ── Step 4: write output ─────────────────────────────────────────
+            for oc_rel in T.serial(block_oc):
+                oc_abs = pid_oc * block_oc + oc_rel
+                if oc_abs < C_out:
+                    for sub in T.serial(2):
+                        ohw_abs = pid_ohw * block_ohw + tid * 2 + sub
+                        if ohw_abs < total_ohw:
+                            n_idx = ohw_abs // (H_out * W_out)
+                            rem   = ohw_abs - n_idx * (H_out * W_out)
+                            oh    = rem // W_out
+                            ow    = rem - oh * W_out
+                            y[n_idx, oc_abs, oh, ow] = acc[oc_rel * 2 + sub].astype(dtype)
+
+    return main
 
 
-def _compile_kernel(M, N_out, K, dtype_str="float32"):
-    """Compile (and cache) a TileLang GEMM kernel for given dimensions.
-    
-    Parameters
-    ----------
-    M : int
-        Output rows (Cout)
-    N_out : int
-        Output columns (H_out * W_out)
-    K : int
-        Inner dimension (Cin * KH * KW)
-    dtype_str : str
-        Data type string, e.g. "float32" or "float16"
-    """
-    key = (M, N_out, K, dtype_str)
+def _compile_direct_conv(N, C_in, H, W, C_out, H_out, W_out, pad, stride, dtype_str):
+    key = (N, C_in, H, W, C_out, H_out, W_out, pad, stride, dtype_str)
     if key in _kernel_cache:
         return _kernel_cache[key]
 
-    # Block sizes tuned for sm_75 (T4 / RTX 2080 Ti)
-    block_M = 64
-    block_N = 64
-    block_K = 32
-
-    program = _make_gemm_program(
-        M, N_out, K,
-        block_M, block_N, block_K,
-        dtype=dtype_str,
-        accum_dtype="float",
+    program = _make_direct_conv_kernel(
+        N, C_in, H, W, C_out, H_out, W_out, pad, stride, dtype=dtype_str
     )
-
-    # --- TileLang v0.1.0 compilation path ---
     mod, params = tilelang.lower(program)
-    kernel = tilelang.Profiler(mod, params, [2],
-                               tilelang.TensorSupplyType.Integer)
-
+    # result_idx=[2] → y is the 3rd buffer (output)
+    kernel = tilelang.Profiler(mod, params, [2], tilelang.TensorSupplyType.Integer)
     _kernel_cache[key] = kernel
     return kernel
 
@@ -107,12 +157,13 @@ def _compile_kernel(M, N_out, K, dtype_str="float32"):
 
 def tilelang_conv2d(x, w, bias=None, stride=1, padding=1):
     """
-    Conv2D using im2col + TileLang GEMM.
+    Direct Conv2D in TileLang (no im2col scratch buffer).
+    Shared memory is used for weight slices and input patches, matching TK.
 
     Parameters
     ----------
-    x : Tensor  (N, Cin, H, W)     – input activations
-    w : Tensor  (Cout, Cin, KH, KW) – convolution filters
+    x : Tensor  (N, Cin, H, W)       – input activations
+    w : Tensor  (Cout, Cin, KH, KW)  – convolution filters (KH=KW=3)
     bias : Tensor or None
     stride : int
     padding : int
@@ -121,46 +172,28 @@ def tilelang_conv2d(x, w, bias=None, stride=1, padding=1):
     -------
     Tensor  (N, Cout, H_out, W_out)
     """
-    # Map torch dtype to tilelang dtype string
+    assert x.is_cuda and w.is_cuda, "Inputs must be on CUDA"
+    assert x.is_contiguous() and w.is_contiguous(), "Inputs must be contiguous"
+    assert w.size(2) == 3 and w.size(3) == 3, "Kernel specialised for 3×3"
+
     dtype_map = {
         torch.float16: "float16",
         torch.bfloat16: "bfloat16",
         torch.float32: "float32",
     }
     dtype_str = dtype_map[x.dtype]
-    
-    orig_dtype = x.dtype
-    N_batch, Cin, H, W = x.shape
-    Cout, _, KH, KW = w.shape
 
+    N_batch, C_in, H, W = x.shape
+    C_out, _, KH, KW = w.shape
     H_out = (H + 2 * padding - KH) // stride + 1
     W_out = (W + 2 * padding - KW) // stride + 1
 
-    # ---- Step 1: im2col via PyTorch unfold (fast CUDA op) ----
-    x_col = torch.nn.functional.unfold(
-        x, kernel_size=(KH, KW), padding=padding, stride=stride
+    kernel = _compile_direct_conv(
+        N_batch, C_in, H, W, C_out, H_out, W_out,
+        padding, stride, dtype_str
     )
 
-    # ---- Step 2: reshape weight ----
-    w_mat = w.reshape(Cout, -1).contiguous()
-
-    # GEMM dimensions
-    M = Cout
-    K = Cin * KH * KW
-    N_out = H_out * W_out
-
-    # ---- Step 3: compile / fetch cached kernel ----
-    kernel = _compile_kernel(M, N_out, K, dtype_str=dtype_str)
-
-    # ---- Step 4: run GEMM for each batch element ----
-    outputs = []
-    for b in range(N_batch):
-        B_mat = x_col[b].contiguous()
-        C_mat = kernel(w_mat, B_mat)
-        outputs.append(C_mat)
-
-    # ---- Step 5: reshape back to (N, Cout, H_out, W_out) ----
-    output = torch.stack(outputs, dim=0).reshape(N_batch, Cout, H_out, W_out)
+    output = kernel(x, w)   # returns y of shape (N, C_out, H_out, W_out)
 
     if bias is not None:
         output = output + bias.reshape(1, -1, 1, 1)

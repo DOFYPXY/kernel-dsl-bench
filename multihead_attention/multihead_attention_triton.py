@@ -164,9 +164,15 @@ def triton_multihead_attention(
         o: [B, H, S, D]
     """
     assert q.is_cuda and k.is_cuda and v.is_cuda, "q/k/v must be CUDA tensors"
-    assert q.dtype == k.dtype == v.dtype, "q/k/v dtypes must match"
     assert q.shape == k.shape == v.shape, "q/k/v must have the same shape"
     assert q.ndim == 4, "expected q/k/v shape [B, H, S, D]"
+
+    # Cast to fp16 to align with TK and TileLang (Issue-2)
+    orig_dtype = q.dtype
+    if orig_dtype != torch.float16:
+        q = q.to(torch.float16)
+        k = k.to(torch.float16)
+        v = v.to(torch.float16)
 
     B, H, S, D = q.shape
     assert D in (16, 32, 64, 128), f"HEAD_DIM={D} not supported yet"
@@ -202,4 +208,6 @@ def triton_multihead_attention(
         num_stages=1,
     )
 
+    if orig_dtype != torch.float16:
+        o = o.to(orig_dtype)
     return o

@@ -200,9 +200,9 @@ def main():
     benchmarks = [
         ("fma", ["--n", "10000000"]),
         ("matmul", ["--m", "1024", "--n", "1024", "--k", "1024"]),
-        ("conv2d", ["--n", "1", "--cin", "64", "--cout", "64", "--h", "56", "--w", "56"]),
+        ("conv2d", ["--n", "1", "--cin", "64", "--cout", "64", "--h", "56", "--w", "56", "--dtype", "fp16"]),
         ("rmsnorm", ["--batch", "4096", "--hidden", "1024"]),
-        ("multihead_attention", ["--batch", "16", "--heads", "16", "--seq", "1024", "--head-dim", "64"]),
+        ("multihead_attention", ["--batch", "16", "--heads", "16", "--seq", "1024", "--head-dim", "64", "--dtype", "fp16"]),
     ]
     
     implementations = ["torch", "triton", "tilelang"]

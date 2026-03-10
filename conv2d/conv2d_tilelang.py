@@ -9,8 +9,9 @@ Strategy:
   3. Run a TileLang GEMM kernel:  Output = Weight @ Im2col_matrix
   4. Reshape result back to (N, Cout, H_out, W_out).
 
-NOTE: TileLang v0.1.0's T.gemm uses CUTLASS tensor core MMA which only
-supports fp16 inputs on sm_75 (T4). Need to add -dtype fp16
+NOTE: TileLang v0.1.0's T.gemm uses CUTLASS tensor core MMA which is
+optimized for fp16 inputs. This implementation now supports multiple data types
+(float32, float16, bfloat16) by reading the dtype from input tensors.
 
 Designed for TileLang v0.1.0 on sm_75 (T4 / RTX 2080 Ti).
 """
@@ -61,11 +62,21 @@ def _make_gemm_program(M, N, K, block_M, block_N, block_K,
     return gemm_kernel
 
 
-def _compile_kernel(M, N_out, K):
+def _compile_kernel(M, N_out, K, dtype_str="float32"):
     """Compile (and cache) a TileLang GEMM kernel for given dimensions.
-    Always uses fp16 inputs + fp32 accumulation (tensor core requirement on sm_75).
+    
+    Parameters
+    ----------
+    M : int
+        Output rows (Cout)
+    N_out : int
+        Output columns (H_out * W_out)
+    K : int
+        Inner dimension (Cin * KH * KW)
+    dtype_str : str
+        Data type string, e.g. "float32" or "float16"
     """
-    key = (M, N_out, K)
+    key = (M, N_out, K, dtype_str)
     if key in _kernel_cache:
         return _kernel_cache[key]
 
@@ -77,7 +88,7 @@ def _compile_kernel(M, N_out, K):
     program = _make_gemm_program(
         M, N_out, K,
         block_M, block_N, block_K,
-        dtype="float16",
+        dtype=dtype_str,
         accum_dtype="float",
     )
 
@@ -110,6 +121,14 @@ def tilelang_conv2d(x, w, bias=None, stride=1, padding=1):
     -------
     Tensor  (N, Cout, H_out, W_out)
     """
+    # Map torch dtype to tilelang dtype string
+    dtype_map = {
+        torch.float16: "float16",
+        torch.bfloat16: "bfloat16",
+        torch.float32: "float32",
+    }
+    dtype_str = dtype_map[x.dtype]
+    
     orig_dtype = x.dtype
     N_batch, Cin, H, W = x.shape
     Cout, _, KH, KW = w.shape
@@ -131,7 +150,7 @@ def tilelang_conv2d(x, w, bias=None, stride=1, padding=1):
     N_out = H_out * W_out
 
     # ---- Step 3: compile / fetch cached kernel ----
-    kernel = _compile_kernel(M, N_out, K)
+    kernel = _compile_kernel(M, N_out, K, dtype_str=dtype_str)
 
     # ---- Step 4: run GEMM for each batch element ----
     outputs = []

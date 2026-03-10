@@ -81,28 +81,20 @@ def main():
     print(f"  Mean time: {mean_ms:.4f} ms")
     print(f"  Stddev: {stddev_ms:.4f} ms")
 
-    if args.impl == "triton":
+    # Verify correctness
+    if args.impl in ["triton", "tilelang", "tk"]:
         print()
         print("Verifying correctness...")
-        torch_out = torch_conv2d(x, w, bias=None, stride=1, padding=1).to(torch.float32)
-        triton_out = triton_conv2d_3x3_s1p1(x, w).to(torch.float32)
+        torch_result = torch_conv2d(x, w, bias=None, stride=1, padding=1).to(torch.float32)
+        impl_result = fn(x, w).to(torch.float32)
 
-        is_correct, max_abs_diff = verify_correctness(triton_out, torch_out, atol=1e-3, rtol=1e-3)
+        is_correct, max_abs_diff = verify_correctness(
+            impl_result, torch_result
+        )
+
         print(f"  Max absolute difference: {max_abs_diff:.2e}")
         print(f"  Correct: {'✓' if is_correct else '✗'}")
-        if not is_correct:
-            print("WARNING: Numerical difference detected!", file=sys.stderr)
-            sys.exit(1)
-    
-    if args.impl == "tilelang":
-        print()
-        print("Verifying correctness...")
-        torch_out = torch_conv2d(x, w, bias=None, stride=1, padding=1).to(torch.float32)
-        tl_out = tilelang_conv2d(x, w, bias=None, stride=1, padding=1).to(torch.float32)
 
-        is_correct, max_abs_diff = verify_correctness(tl_out, torch_out, atol=1e-3, rtol=1e-3)
-        print(f"  Max absolute difference: {max_abs_diff:.2e}")
-        print(f"  Correct: {'✓' if is_correct else '✗'}")
         if not is_correct:
             print("WARNING: Numerical difference detected!", file=sys.stderr)
             sys.exit(1)

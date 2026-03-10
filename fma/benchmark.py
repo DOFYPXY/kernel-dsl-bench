@@ -39,15 +39,6 @@ except (ImportError, AttributeError) as e:
     tilelang_fma = None
     print(f"Warning: Tilelang not available ({type(e).__name__}: {e})", file=sys.stderr)
 
-# Try to import tilelang, but don't fail if it's not available
-try:
-    from fma_tilelang import tilelang_fma
-    TILELANG_AVAILABLE = True
-except (ImportError, AttributeError) as e:
-    TILELANG_AVAILABLE = False
-    tilelang_fma = None
-    print(f"Warning: Tilelang not available ({type(e).__name__}: {e})", file=sys.stderr)
-
 
 def main():
     parser = argparse.ArgumentParser(
@@ -126,21 +117,15 @@ def main():
         print()
         print("Verifying correctness...")
         torch_result = torch_fma(x, a, b)
+        impl_result = fn(x, a, b)
 
-        if args.impl == "triton":
-            impl_result = triton_fma(x, a, b)
-        elif args.impl == "tilelang":
-            impl_result = tilelang_fma(x, a, b)
-        elif args.impl == "jax":
-            impl_result = jax_fma(x, a, b)
-        else:  # tk
-            impl_result = tk_fma(x, a, b)
-        
-        is_correct, max_abs_diff = verify_correctness(impl_result, torch_result)
-        
+        is_correct, max_abs_diff = verify_correctness(
+            impl_result, torch_result
+        )
+
         print(f"  Max absolute difference: {max_abs_diff:.2e}")
         print(f"  Correct: {'✓' if is_correct else '✗'}")
-        
+
         if not is_correct:
             print("WARNING: Numerical difference detected!", file=sys.stderr)
             sys.exit(1)

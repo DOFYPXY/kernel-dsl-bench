@@ -39,14 +39,6 @@ except (ImportError, AttributeError) as e:
 
 from matmul_tk import tk_matmul
 
-try:
-    from matmul_tilelang import tilelang_matmul
-    TILELANG_AVAILABLE = True
-except (ImportError, AttributeError) as e:
-    TILELANG_AVAILABLE = False
-    tilelang_matmul = None
-    print(f"Warning: Tilelang not available ({type(e).__name__}: {e})", file=sys.stderr)
-
 
 def main():
     parser = argparse.ArgumentParser(
@@ -154,31 +146,15 @@ def main():
         print()
         print("Verifying correctness...")
         torch_result = torch_matmul(a, b)
+        impl_result = fn(a, b)
 
-        if args.impl == "triton":
-            impl_result = triton_matmul(a, b)
-        elif args.impl == "tilelang":
-            impl_result = tilelang_matmul(a, b)
-        elif args.impl == "jax":
-            impl_result = jax_matmul(a, b)
-        else:  # tk
-            impl_result = tk_matmul(a, b)
-        
-        # Use relaxed tolerances for matmul due to accumulation errors
-        if dtype == torch.float16:
-            atol, rtol = 0.2, 0.2
-        elif args.impl == "tk":
-            atol, rtol = 1e-2, 1e-2  # fp32 accumulation in TK kernel
-        else:
-            atol, rtol = 1e-2, 1e-2
-        
         is_correct, max_abs_diff = verify_correctness(
-            impl_result, torch_result, atol=atol, rtol=rtol
+            impl_result, torch_result
         )
-        
+
         print(f"  Max absolute difference: {max_abs_diff:.2e}")
         print(f"  Correct: {'✓' if is_correct else '✗'}")
-        
+
         if not is_correct:
             print("WARNING: Numerical difference detected!", file=sys.stderr)
             sys.exit(1)

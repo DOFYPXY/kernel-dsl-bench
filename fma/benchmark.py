@@ -117,21 +117,15 @@ def main():
         print()
         print("Verifying correctness...")
         torch_result = torch_fma(x, a, b)
+        impl_result = fn(x, a, b)
 
-        if args.impl == "triton":
-            impl_result = triton_fma(x, a, b)
-        elif args.impl == "tilelang":
-            impl_result = tilelang_fma(x, a, b)
-        elif args.impl == "jax":
-            impl_result = jax_fma(x, a, b)
-        else:  # tk
-            impl_result = tk_fma(x, a, b)
-        
-        is_correct, max_abs_diff = verify_correctness(impl_result, torch_result)
-        
+        is_correct, max_abs_diff = verify_correctness(
+            impl_result, torch_result
+        )
+
         print(f"  Max absolute difference: {max_abs_diff:.2e}")
         print(f"  Correct: {'✓' if is_correct else '✗'}")
-        
+
         if not is_correct:
             print("WARNING: Numerical difference detected!", file=sys.stderr)
             sys.exit(1)

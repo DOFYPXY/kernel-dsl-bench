@@ -79,9 +79,17 @@ def tilelang_fma(x: torch.Tensor, a: float, b: float) -> torch.Tensor:
     NUM_PER_THREAD = 4  # float32: 4×32bit = 128-bit vector load
     THREADS = 256
 
-    cache_key = (N, a, b, NUM_PER_THREAD, THREADS)
+    # Map torch dtype to tilelang dtype string
+    dtype_map = {
+        torch.float16: "float16",
+        torch.bfloat16: "bfloat16",
+        torch.float32: "float32",
+    }
+    dtype_str = dtype_map[x.dtype]
+
+    cache_key = (N, a, b, NUM_PER_THREAD, THREADS, dtype_str)
     if cache_key not in _kernel_cache:
-        program = tilelang_fma_kernel(N, a, b, num_per_thread=NUM_PER_THREAD, threads=THREADS)
+        program = tilelang_fma_kernel(N, a, b, num_per_thread=NUM_PER_THREAD, threads=THREADS, dtype=dtype_str)
         rt_mod, params = tilelang.lower(program)
         _kernel_cache[cache_key] = Profiler(rt_mod, params, result_idx=[0])
 

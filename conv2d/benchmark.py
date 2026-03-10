@@ -21,6 +21,7 @@ from common import print_gpu_info, benchmark, verify_correctness, get_dtype, add
 from conv2d_torch import torch_conv2d
 from conv2d_triton import triton_conv2d_3x3_s1p1
 from conv2d_tk import tk_conv2d
+from conv2d_tilelang import tilelang_conv2d
 
 
 def main():
@@ -67,6 +68,8 @@ def main():
         fn = triton_conv2d_3x3_s1p1
     elif args.impl == "tk":
         fn = lambda _x, _w: tk_conv2d(_x, _w, bias=None, stride=1, padding=1)
+    elif args.impl == "tilelang":
+        fn = lambda _x, _w: tilelang_conv2d(_x, _w, bias=None, stride=1, padding=1)
     else:
         print("JAX impl not provided for conv2d in this project yet.", file=sys.stderr)
         sys.exit(1)
@@ -78,15 +81,20 @@ def main():
     print(f"  Mean time: {mean_ms:.4f} ms")
     print(f"  Stddev: {stddev_ms:.4f} ms")
 
-    if args.impl == "triton":
+    # Verify correctness
+    if args.impl in ["triton", "tilelang", "tk"]:
         print()
         print("Verifying correctness...")
-        torch_out = torch_conv2d(x, w, bias=None, stride=1, padding=1).to(torch.float32)
-        triton_out = triton_conv2d_3x3_s1p1(x, w).to(torch.float32)
+        torch_result = torch_conv2d(x, w, bias=None, stride=1, padding=1).to(torch.float32)
+        impl_result = fn(x, w).to(torch.float32)
 
-        is_correct, max_abs_diff = verify_correctness(triton_out, torch_out, atol=1e-3, rtol=1e-3)
+        is_correct, max_abs_diff = verify_correctness(
+            impl_result, torch_result
+        )
+
         print(f"  Max absolute difference: {max_abs_diff:.2e}")
         print(f"  Correct: {'✓' if is_correct else '✗'}")
+
         if not is_correct:
             print("WARNING: Numerical difference detected!", file=sys.stderr)
             sys.exit(1)

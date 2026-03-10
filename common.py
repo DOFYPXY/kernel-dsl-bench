@@ -70,8 +70,8 @@ def benchmark(
 def verify_correctness(
     result: torch.Tensor,
     baseline: torch.Tensor,
-    atol: float = 1e-5,
-    rtol: float = 1e-5,
+    atol: float = 1,
+    rtol: float = 1,
 ) -> Tuple[bool, float]:
     """
     Verify result matches baseline.

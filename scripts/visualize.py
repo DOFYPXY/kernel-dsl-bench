@@ -70,7 +70,7 @@ def plot_kernel(kernel: str, rows: list, output_dir: str, show: bool):
 	means = [r["mean_ms"] for r in valid_rows]
 	stds = [0.0 if r["std_ms"] is None else r["std_ms"] for r in valid_rows]
 
-	fig, ax = plt.subplots(figsize=(7, 4.5))
+	fig, ax = plt.subplots(figsize=(5, 3))
 	ax.errorbar(
 		x_positions,
 		means,
@@ -86,6 +86,7 @@ def plot_kernel(kernel: str, rows: list, output_dir: str, show: bool):
 	ax.set_xticks(x_positions)
 	ax.set_xticklabels(labels)
 	ax.grid(axis="y", linestyle="--", alpha=0.4)
+	ax.set_ylim(bottom=0) 
 
 	os.makedirs(output_dir, exist_ok=True)
 	output_path = os.path.join(output_dir, f"{kernel}_scatter.png")
@@ -105,8 +106,7 @@ def main():
 	parser.add_argument(
 		"csv_path",
 		nargs="?",
-		default="benchmark_results.csv",
-		help="Path to benchmark CSV (default: benchmark_results.csv)",
+		help="Path to benchmark CSV",
 	)
 	parser.add_argument(
 		"--output-dir",

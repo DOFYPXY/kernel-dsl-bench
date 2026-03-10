@@ -14,10 +14,11 @@ import torch
 # Add parent directory to path to import common utilities
 sys.path.insert(0, "..")
 
-from common import add_common_args, benchmark, get_dtype, print_gpu_info
+from common import add_common_args, benchmark, get_dtype, print_gpu_info, verify_correctness
 from multihead_attention_torch import torch_multihead_attention
 from multihead_attention_triton import triton_multihead_attention
 from multihead_attention_tk import tk_multihead_attention
+from multihead_attention_tilelang import tilelang_multihead_attention
 
 
 def main():
@@ -93,6 +94,8 @@ def main():
         fn = triton_multihead_attention
     elif args.impl == "tk":
         fn = tk_multihead_attention
+    elif args.impl == "tilelang":
+        fn = tilelang_multihead_attention
     else:
         print(f"{args.impl.upper()} not implemented for multihead_attention", file=sys.stderr)
         sys.exit(1)
@@ -114,11 +117,11 @@ def main():
     print(f"  Mean time: {mean_ms:.4f} ms")
     print(f"  Stddev: {stddev_ms:.4f} ms")
     print(f"  Performance: {tflops:.2f} TFLOPS")
-    print()
-    print("=" * 80)
 
-    if args.impl == "triton":
-        print("Verifying correctness on a smaller test case...")
+    if args.impl in ["triton", "tilelang", "tk"]:
+        print()
+        print("Verifying correctness...")
+        print("  Using a smaller test case for faster validation.")
         test_b = min(args.batch, 2)
         test_h = min(args.heads, 2)
         test_s = min(args.seq, 128)
@@ -127,12 +130,22 @@ def main():
         k_test = k[:test_b, :test_h, :test_s, :].contiguous()
         v_test = v[:test_b, :test_h, :test_s, :].contiguous()
 
-        ref = torch_multihead_attention(q_test, k_test, v_test, causal=args.causal)
-        out = triton_multihead_attention(q_test, k_test, v_test, causal=args.causal)
+        torch_result = torch_multihead_attention(q_test, k_test, v_test, causal=args.causal)
+        impl_result = fn(q_test, k_test, v_test, causal=args.causal)
 
-        max_diff = (ref - out).abs().max().item()
-        print(f"Max absolute difference: {max_diff:.6e}")
-        print()
+        is_correct, max_abs_diff = verify_correctness(
+            impl_result.float(), torch_result.float()
+        )
+
+        print(f"  Max absolute difference: {max_abs_diff:.2e}")
+        print(f"  Correct: {'✓' if is_correct else '✗'}")
+
+        if not is_correct:
+            print("WARNING: Numerical difference detected!", file=sys.stderr)
+            sys.exit(1)
+
+    print()
+    print("=" * 80)
 
 
 if __name__ == "__main__":

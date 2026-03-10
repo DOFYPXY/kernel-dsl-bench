@@ -39,6 +39,15 @@ except (ImportError, AttributeError) as e:
     tilelang_fma = None
     print(f"Warning: Tilelang not available ({type(e).__name__}: {e})", file=sys.stderr)
 
+# Try to import tilelang, but don't fail if it's not available
+try:
+    from fma_tilelang import tilelang_fma
+    TILELANG_AVAILABLE = True
+except (ImportError, AttributeError) as e:
+    TILELANG_AVAILABLE = False
+    tilelang_fma = None
+    print(f"Warning: Tilelang not available ({type(e).__name__}: {e})", file=sys.stderr)
+
 
 def main():
     parser = argparse.ArgumentParser(

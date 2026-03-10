@@ -39,6 +39,14 @@ except (ImportError, AttributeError) as e:
 
 from matmul_tk import tk_matmul
 
+try:
+    from matmul_tilelang import tilelang_matmul
+    TILELANG_AVAILABLE = True
+except (ImportError, AttributeError) as e:
+    TILELANG_AVAILABLE = False
+    tilelang_matmul = None
+    print(f"Warning: Tilelang not available ({type(e).__name__}: {e})", file=sys.stderr)
+
 
 def main():
     parser = argparse.ArgumentParser(

@@ -24,6 +24,8 @@ from typing import Dict, List, Optional
 # Determine repository root
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 _ROOT_DIR = os.path.dirname(_THIS_DIR)
+sys.path.insert(0, _ROOT_DIR)
+from common import build_subprocess_env  # noqa: E402
 
 
 def linear_sizes(min_size: int, step_size: int, num_sizes: int) -> List[int]:
@@ -37,7 +39,8 @@ def run_matmul_benchmark(m: int, n: int, k: int, impl: str, warmup: int, iters: 
         result = subprocess.run(
             [sys.executable, "run.py", "matmul", "--impl", impl, "--m", str(m), "--n", str(n),
              "--k", str(k), "--warmup", str(warmup), "--iters", str(iters)],
-            capture_output=True, text=True, timeout=120, cwd=_ROOT_DIR)
+            capture_output=True, text=True, timeout=120, cwd=_ROOT_DIR,
+            env=build_subprocess_env())
         
         output = result.stdout + result.stderr
         if result.returncode != 0:
@@ -133,8 +136,8 @@ def main() -> None:
     if args.min_size <= 0 or args.step_size <= 0 or args.num_sizes <= 0:
         raise ValueError("Size parameters must be positive")
 
-    # implementations = ["torch", "triton", "tilelang"]
-    implementations = ["tk"]
+    implementations = ["torch", "triton", "tilelang"]
+    # implementations = ["tk"]
     
     sizes = linear_sizes(args.min_size, args.step_size, args.num_sizes)
     os.makedirs(args.output_dir, exist_ok=True)

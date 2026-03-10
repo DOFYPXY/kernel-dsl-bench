@@ -32,7 +32,7 @@ except (ImportError, AttributeError) as e:
 try:
     from matmul_tilelang import tilelang_matmul
     TILELANG_AVAILABLE = True
-except (ImportError, AttributeError) as e:
+except Exception as e:
     TILELANG_AVAILABLE = False
     tilelang_matmul = None
     print(f"Warning: Tilelang not available ({type(e).__name__}: {e})", file=sys.stderr)

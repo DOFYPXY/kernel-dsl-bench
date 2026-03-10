@@ -26,6 +26,8 @@ from typing import Dict, List, Optional
 # Determine repository root
 _THIS_DIR = os.path.dirname(os.path.abspath(__file__))
 _ROOT_DIR = os.path.dirname(_THIS_DIR)
+sys.path.insert(0, _ROOT_DIR)
+from common import build_subprocess_env  # noqa: E402
 
 
 def linear_sizes(min_size: int, step_size: int, num_sizes: int) -> List[int]:
@@ -39,7 +41,8 @@ def run_rmsnorm_benchmark(hidden: int, batch: int, impl: str, warmup: int, iters
         result = subprocess.run(
             [sys.executable, "run.py", "rmsnorm", "--impl", impl, "--hidden", str(hidden),
              "--batch", str(batch), "--warmup", str(warmup), "--iters", str(iters)],
-            capture_output=True, text=True, timeout=120, cwd=_ROOT_DIR)
+            capture_output=True, text=True, timeout=120, cwd=_ROOT_DIR,
+            env=build_subprocess_env())
         
         output = result.stdout + result.stderr
         if result.returncode != 0:

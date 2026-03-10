@@ -24,7 +24,7 @@ from rmsnorm_tk import tk_rmsnorm
 try:
     from rmsnorm_tilelang import tilelang_rmsnorm
     TILELANG_AVAILABLE = True
-except (ImportError, AttributeError) as e:
+except Exception as e:
     TILELANG_AVAILABLE = False
     tilelang_rmsnorm = None
     print(f"Warning: Tilelang not available ({type(e).__name__}: {e})", file=sys.stderr)

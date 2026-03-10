@@ -22,7 +22,7 @@ from multihead_attention_tk import tk_multihead_attention
 try:
     from multihead_attention_tilelang import tilelang_multihead_attention
     TILELANG_AVAILABLE = True
-except (ImportError, AttributeError) as e:
+except Exception as e:
     TILELANG_AVAILABLE = False
     tilelang_multihead_attention = None
     print(f"Warning: Tilelang not available ({type(e).__name__}: {e})", file=sys.stderr)

@@ -136,7 +136,9 @@ def main() -> None:
     if args.min_hidden <= 0 or args.step_size <= 0 or args.num_sizes <= 0:
         raise ValueError("Size parameters must be positive")
 
-    implementations = ["torch", "triton", "tilelang"]
+    # implementations = ["torch", "triton", "tilelang"]
+    implementations = ["tk"] 
+    
     hidden_sizes = linear_sizes(args.min_hidden, args.step_size, args.num_sizes)
     os.makedirs(args.output_dir, exist_ok=True)
 

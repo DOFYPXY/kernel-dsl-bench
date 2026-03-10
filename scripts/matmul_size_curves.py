@@ -68,7 +68,7 @@ def plot_size_curves(data: dict, output_dir: str, show: bool):
 	if not data:
 		raise ValueError("No data to plot")
 
-	fig, ax = plt.subplots(figsize=(10, 6))
+	fig, ax = plt.subplots(figsize=(12, 4))
 
 	for impl, rows in sorted(data.items()):
 		if not rows:
@@ -89,7 +89,7 @@ def plot_size_curves(data: dict, output_dir: str, show: bool):
 			markersize=6,
 		)
 
-	ax.set_title("MatMul Benchmark: Execution Time vs Matrix Size")
+	ax.set_title("MatMul: Time vs Matrix Size")
 	ax.set_xlabel("Matrix Size (m=n=k)")
 	ax.set_ylabel("Mean Time (ms)")
 	ax.grid(True, linestyle="--", alpha=0.4)
@@ -114,8 +114,7 @@ def main():
 	parser.add_argument(
 		"csv_path",
 		nargs="?",
-		default="results/matmul_size/time.csv",
-		help="Path to matmul benchmark CSV (default: results/matmul_size/time.csv)",
+		help="Path to matmul benchmark CSV",
 	)
 	parser.add_argument(
 		"--output-dir",

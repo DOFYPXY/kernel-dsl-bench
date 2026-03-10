@@ -70,7 +70,7 @@ def plot_kernel(kernel: str, rows: list, output_dir: str, show: bool):
 	means = [r["mean_ms"] for r in valid_rows]
 	stds = [0.0 if r["std_ms"] is None else r["std_ms"] for r in valid_rows]
 
-	fig, ax = plt.subplots(figsize=(5, 3))
+	fig, ax = plt.subplots(figsize=(4, 2.5))
 	ax.errorbar(
 		x_positions,
 		means,
@@ -80,8 +80,7 @@ def plot_kernel(kernel: str, rows: list, output_dir: str, show: bool):
 		markersize=7,
 		linewidth=1.2,
 	)
-	ax.set_title(f"{kernel.upper()} Benchmark")
-	ax.set_xlabel("Implementation")
+	ax.set_title(f"{kernel.upper()}")
 	ax.set_ylabel("Mean Time (ms)")
 	ax.set_xticks(x_positions)
 	ax.set_xticklabels(labels)

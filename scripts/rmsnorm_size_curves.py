@@ -68,7 +68,7 @@ def plot_size_curves(data: dict, output_dir: str, show: bool):
 	if not data:
 		raise ValueError("No data to plot")
 
-	fig, ax = plt.subplots(figsize=(10, 6))
+	fig, ax = plt.subplots(figsize=(12, 4))
 
 	for impl, rows in sorted(data.items()):
 		if not rows:
@@ -89,7 +89,7 @@ def plot_size_curves(data: dict, output_dir: str, show: bool):
 			markersize=6,
 		)
 
-	ax.set_title("RMSNorm Benchmark: Execution Time vs Hidden Dimension")
+	ax.set_title("RMSNorm: Time vs Hidden Dimension")
 	ax.set_xlabel("Hidden Dimension")
 	ax.set_ylabel("Mean Time (ms)")
 	ax.grid(True, linestyle="--", alpha=0.4)
@@ -114,8 +114,7 @@ def main():
 	parser.add_argument(
 		"csv_path",
 		nargs="?",
-		default="results/rmsnorm_size/time.csv",
-		help="Path to rmsnorm benchmark CSV (default: results/rmsnorm_size/time.csv)",
+		help="Path to rmsnorm benchmark CSV",
 	)
 	parser.add_argument(
 		"--output-dir",
